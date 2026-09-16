@@ -1007,5 +1007,15 @@ $('clearDone').onclick = () => {
   } else {
     setStatus('준비됨');
     $('url').focus();
+    // 예전 버전에서 올라온 경우 yt-dlp 와 ffmpeg 는 있지만 deno 가 없다.
+    // 준비 화면이 뜨지 않으므로 여기서 조용히 채워 넣는다.
+    if (!status.deno || !status.deno.ok) topUpTools();
   }
 })();
+
+/** 빠진 도구를 화면을 막지 않고 뒤에서 채운다 */
+async function topUpTools() {
+  const r = await window.utov.tools.ensure();
+  if (r.ok) paintTools(r.status);
+  setStatus('준비됨');
+}
