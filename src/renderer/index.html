@@ -77,6 +77,32 @@
     </div>
   </div>
 
+  <!-- ─────────────────────────────────────────────── 이용 동의 -->
+  <section class="setup" id="consent" hidden>
+    <div class="setup-inner">
+      <p class="consent-kicker">읽고 동의해 주세요</p>
+      <h1>수업에 쓰려고 만든 도구입니다</h1>
+      <p>
+        UtoV 는 고등학교 교사가 수업 자료를 만들려고 만든 프로그램입니다.
+        값을 받지 않으며, 학교 수업에서 쓰는 것을 전제로 나눕니다.
+      </p>
+      <p>
+        내려받는 영상에는 대부분 저작권이 있습니다. 무엇을 내려받고 어떻게 쓸지는
+        쓰는 사람이 정하며, <b>그에 따른 책임도 쓰는 사람에게 있습니다.</b>
+        「저작권법」 제25조는 수업 목적의 이용을 일정한 범위에서 허용하지만,
+        그 범위를 벗어나 배포하거나 공개하면 저작권 침해가 될 수 있습니다.
+      </p>
+
+      <ul class="consent-checks">
+        <li><label><input type="checkbox" data-agree /><span>학교 수업 등 <b>교육 목적으로만</b> 사용하겠습니다.</span></label></li>
+        <li><label><input type="checkbox" data-agree /><span>내려받은 영상을 <b>다시 배포하거나 공개하지 않겠습니다.</b></span></label></li>
+        <li><label><input type="checkbox" data-agree /><span>저작권에 대한 <b>책임이 저에게 있음</b>을 이해했습니다.</span></label></li>
+      </ul>
+
+      <button class="primary" id="consentGo" disabled>동의하고 시작하기</button>
+    </div>
+  </section>
+
   <!-- ─────────────────────────────────────────────── 첫 실행 준비 -->
   <section class="setup" id="setup" hidden>
     <div class="setup-inner">

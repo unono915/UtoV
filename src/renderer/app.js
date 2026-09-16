@@ -139,6 +139,36 @@ function notice(text, kind, raw) {
   }
 }
 
+/* ══════════════════════════════════════════════════════ 이용 동의 */
+
+/** 문구를 고치면 이 숫자를 올려 다시 동의를 받는다 */
+const CONSENT_VERSION = 1;
+
+/** 세 가지를 모두 확인하고 단추를 누를 때까지 기다린다 */
+function waitForConsent() {
+  return new Promise((resolve) => {
+    const boxes = [...$('consent').querySelectorAll('[data-agree]')];
+    const go = $('consentGo');
+
+    const sync = () => {
+      go.disabled = !boxes.every((b) => b.checked);
+    };
+    for (const b of boxes) {
+      b.checked = false;
+      b.onchange = sync;
+    }
+    sync();
+
+    go.onclick = async () => {
+      if (go.disabled) return;
+      go.disabled = true;
+      state.settings = await window.utov.settings.set({ agreedVersion: CONSENT_VERSION });
+      resolve();
+    };
+    boxes[0].focus();
+  });
+}
+
 /* ══════════════════════════════════════════════════ 창 · 테마 · 설정 */
 
 $('winMin').onclick = () => window.utov.win.minimize();
@@ -1027,6 +1057,18 @@ $('clearDone').onclick = () => {
 
   const status = await window.utov.tools.status();
   paintTools(status);
+
+  // 무엇을 내려받을지는 쓰는 사람이 정한다. 그 책임을 먼저 분명히 하고 시작한다.
+  // 값이 없거나 숫자가 아니면 동의를 받는다 (NaN < n 은 false 라 뒤집어 쓴다)
+  if (!(Number(state.settings.agreedVersion) >= CONSENT_VERSION)) {
+    $('stage').hidden = true;
+    $('setup').hidden = true;
+    $('consent').hidden = false;
+    setStatus('이용 동의가 필요합니다');
+    await waitForConsent();
+    $('consent').hidden = true;
+    $('stage').hidden = false;
+  }
 
   if (!status.ready) {
     $('stage').hidden = true;

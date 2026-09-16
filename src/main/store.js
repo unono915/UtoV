@@ -10,6 +10,8 @@ const DEFAULTS = {
   precise: true,        // 구간을 프레임 단위로 정확히 자름
   subs: 'none',         // none | file | embed
   theme: 'dark',        // dark | light
+  // 첫 실행 때 받는 이용 동의. 문구가 바뀌면 숫자를 올려 다시 받는다.
+  agreedVersion: 0,
   // 5 로 두면 유튜브가 속도 제한을 거는 일이 잦다. 3 이면 충분히 빠르면서 안전하다.
   concurrency: 3,
 };

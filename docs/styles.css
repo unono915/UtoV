@@ -89,6 +89,88 @@ a { color: inherit; }
 .mark-film { fill: none; stroke: var(--ink-3); stroke-width: 1.4; }
 .mark-cut { stroke: var(--mark); stroke-width: 2.2; stroke-linecap: round; }
 
+/* ------------------------------------------------------- 이용 동의 */
+
+/* 동의 전에는 본문을 아예 보여 주지 않는다 */
+:root[data-gate='on'] body > *:not(.gate) { display: none !important; }
+:root[data-gate='on'] { overflow: hidden; }
+:root[data-gate='on'] body { overflow: hidden; }
+
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--paper);
+}
+
+.gate-card {
+  width: min(640px, 100%);
+  margin: auto;
+  padding: clamp(28px, 4vw, 44px);
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: var(--paper-2);
+}
+
+.gate-kicker {
+  font-size: 12.5px;
+  font-weight: 640;
+  letter-spacing: 0.1em;
+  color: var(--mark-deep);
+  margin-bottom: 12px;
+}
+
+.gate h1 {
+  font-size: clamp(22px, 3.2vw, 30px);
+  line-height: 1.3;
+  letter-spacing: -0.03em;
+  font-weight: 730;
+}
+
+.gate-lead { margin-top: 14px; color: var(--ink-2); font-size: 15.5px; }
+
+.gate-body {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+  display: grid;
+  gap: 12px;
+}
+.gate-body p { font-size: 14.5px; color: var(--ink-2); line-height: 1.7; }
+.gate-body b { font-weight: 660; color: var(--ink); }
+.gate-tip { color: var(--mark-deep) !important; }
+
+.gate-checks { margin-top: 24px; display: grid; gap: 2px; }
+.gate-checks label {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 14.5px;
+  line-height: 1.55;
+  transition: background 180ms var(--ease);
+}
+.gate-checks label:hover { background: var(--paper-3); }
+.gate-checks input {
+  accent-color: var(--mark);
+  width: 17px;
+  height: 17px;
+  margin: 1px 0 0;
+  flex: none;
+}
+.gate-checks b { font-weight: 660; }
+
+.gate #gateGo { margin-top: 22px; width: 100%; }
+.gate #gateGo:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.gate-note { margin-top: 12px; font-size: 13px; color: var(--ink-3); text-align: center; }
+
 /* ------------------------------------------------------------ 머리글 */
 
 .nav {

@@ -1,7 +1,7 @@
 {
   "name": "utov",
   "productName": "UtoV",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "유튜브 영상을 구간 지정하여 내려받는 데스크톱 도구",
   "author": {
     "name": "UtoV"

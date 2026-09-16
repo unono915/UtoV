@@ -331,6 +331,31 @@ select {
 .setup-list b { font-family: var(--mono); font-size: var(--t-sm); font-weight: 600; }
 .setup-list span { font-size: var(--t-sm); color: var(--ink-3); }
 
+.consent-kicker {
+  font-size: var(--t-xs);
+  font-weight: 640;
+  letter-spacing: 0.1em;
+  color: var(--mark-deep) !important;
+}
+.setup b { font-weight: 660; color: var(--ink); }
+
+.consent-checks { display: grid; gap: 2px; margin-top: 4px; }
+.consent-checks label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: var(--t-sm);
+  line-height: 1.55;
+  color: var(--ink-2);
+  transition: background 180ms var(--ease);
+}
+.consent-checks label:hover { background: var(--paper-2); }
+.consent-checks input { accent-color: var(--mark); width: 16px; height: 16px; margin: 1px 0 0; flex: none; }
+.consent-checks b { color: var(--ink); }
+
 .setup-bar { display: grid; gap: 8px; }
 .setup-status { font-size: var(--t-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .setup-error { font-size: var(--t-sm); color: var(--bad); background: var(--bad-wash); padding: 10px 13px; border-radius: 7px; }
