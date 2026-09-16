@@ -588,11 +588,14 @@ function paintQualityOptions(heights) {
     o.textContent = label;
     sel.append(o);
   };
-  add('best', '가장 좋은 화질');
-  const ladder = [2160, 1440, 1080, 720, 480, 360];
+  // 유튜브에서 어디서나 재생되는 H.264 는 1080p 까지다. 그 위 화질은
+  // AV1 이나 VP9 뿐이라 받아도 윈도우 기본 재생기에서 열리지 않는다.
+  // 열리지 않는 4K 보다 확실히 열리는 1080p 가 낫다.
+  add('best', '가장 좋은 화질 (최대 1080p)');
+  const ladder = [1080, 720, 480, 360];
   const top = heights && heights.length ? heights[0] : 1080;
   for (const h of ladder) {
-    if (h <= top) add(String(h), `${h}p${h === 2160 ? ' (4K)' : ''} 이하`);
+    if (h <= top) add(String(h), `${h}p 이하`);
   }
   const want = state.settings.height;
   sel.value = [...sel.options].some((o) => o.value === want) ? want : 'best';
@@ -886,12 +889,22 @@ window.utov.yt.onEvent((evt) => {
       el.fill.style.width = '100%';
       el.pct.textContent = '';
       const took = evt.elapsed ? `${Math.max(1, Math.round(evt.elapsed / 1000))}초` : '';
+      const warns = Array.isArray(evt.warnings) ? evt.warnings : [];
       el.sub.textContent = [
         range,
-        evt.reused ? '이미 받아 둔 파일입니다' : '저장 완료',
+        evt.reused ? '이미 받아 둔 파일입니다' : warns.length ? '저장했지만 확인할 점이 있습니다' : '저장 완료 · 재생 확인됨',
+        evt.duration ? hms(evt.duration) : '',
         bytes(evt.size),
         took && `${took} 걸림`,
       ].filter(Boolean).join(' · ');
+
+      // 파일은 생겼지만 그대로 두면 곤란한 점이 있으면 감추지 않는다
+      if (warns.length) {
+        el.root.dataset.state = 'warn';
+        el.raw.textContent = warns.join('\n');
+        el.detail.hidden = false;
+        el.copy.hidden = true;
+      }
 
       el.action.disabled = false;
       el.action.textContent = '폴더 열기';

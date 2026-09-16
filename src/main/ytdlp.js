@@ -9,6 +9,7 @@ const { spawn, execFile } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 
 const { ytdlpPath, ffmpegDir, jsRuntime } = require('./paths');
+const postprocess = require('./postprocess');
 
 const SENT = '@@UTOV@@';
 const SENT_PP = '@@UTOVPP@@';
@@ -268,14 +269,30 @@ function shapeInfo(info) {
 
 /* -------------------------------------------------------------- 다운로드 */
 
+/**
+ * 받을 화질과 코덱을 고른다.
+ *
+ * 예전에는 [ext=mp4] 만 걸었는데, 유튜브는 AV1 도 mp4 에 담아 준다.
+ * 그래서 확장자는 mp4 인데 내용물이 AV1 인 파일이 나왔고, 윈도우에는
+ * AV1 디코더가 기본으로 없어서 "받아지긴 했는데 재생이 안 되는" 파일이
+ * 되었다. 소리도 가장 좋은 화질에서는 Opus 가 딸려 왔다.
+ *
+ * 그래서 어디서나 바로 열리는 H.264 + AAC 를 먼저 찾는다. 유튜브의
+ * H.264 는 1080p 까지라, 그 이상은 재생되지 않을 위험을 안고 받기보다
+ * 확실히 열리는 1080p 를 주는 편이 낫다. H.264 가 아예 없는 영상에서만
+ * 다른 코덱으로 넘어가고, 그때는 받은 뒤 검사에서 알려 준다.
+ */
 function formatSelector(mode, height) {
-  if (mode === 'audio') return 'bestaudio/best';
-  if (!height || height === 'best') return 'bv*+ba/b';
-  const h = Number(height);
+  if (mode === 'audio') return 'ba[ext=m4a]/ba/b';
+
+  const cap = height && height !== 'best' ? `[height<=${Number(height)}]` : '';
   return [
-    'bv*[height<=' + h + '][ext=mp4]+ba[ext=m4a]',
-    'bv*[height<=' + h + ']+ba',
-    'b[height<=' + h + ']',
+    `bv*${cap}[vcodec^=avc1]+ba[acodec^=mp4a]`,
+    `bv*${cap}[vcodec^=avc1]+ba`,
+    `b${cap}[vcodec^=avc1]`,
+    `bv*${cap}+ba[acodec^=mp4a]`,
+    `bv*${cap}+ba`,
+    `b${cap}`,
     'bv*+ba/b',
   ].join('/');
 }
@@ -357,7 +374,10 @@ function buildArgs(job, settings, resultFile) {
       '--convert-subs', 'srt',
       '--ignore-errors'
     );
-    if (job.subs === 'embed') args.push('--embed-subs');
+    // 구간을 자를 때는 yt-dlp 가 자막을 넣게 두면 안 된다. 잘라낸 구간에
+    // 원본 전체 자막이 원본 시각 그대로 붙어서 엉뚱한 대사가 보인다.
+    // 시각을 옮긴 뒤 여기서 직접 넣는다 (postprocess.js).
+    if (job.subs === 'embed' && !trimming) args.push('--embed-subs');
   }
 
   args.push(job.url);
@@ -504,6 +524,62 @@ function start(job, settings, onEvent) {
     });
   });
 
+  /**
+   * 내려받은 뒤의 마무리. 구간을 잘랐으면 자막 시각을 옮겨 붙이고,
+   * 마지막에 파일이 실제로 열리는지 확인한다.
+   */
+  async function finishUp(filePath, sizeHint) {
+    const trimming = Boolean(job.trim && job.trim.enabled);
+    const span = trimming ? Number(job.trim.end) - Number(job.trim.start) : null;
+    let file = filePath;
+
+    if (trimming && job.mode !== 'audio' && job.subs && job.subs !== 'none') {
+      try {
+        const srt = await postprocess.findSubtitleNextTo(file);
+        if (srt) {
+          emit({ type: 'phase', label: '자막 시각 맞추는 중' });
+          await postprocess.retimeSrt(srt, Number(job.trim.start), span);
+          if (job.subs === 'embed') {
+            emit({ type: 'phase', label: '자막 넣는 중' });
+            await postprocess.muxSubtitle(file, srt);
+            fs.rm(srt, { force: true }, () => {});
+          }
+        }
+      } catch (err) {
+        // 자막을 못 넣어도 영상은 살린다
+        emit({ type: 'log', line: `자막 처리 실패: ${err.message}`, stderr: true });
+      }
+    }
+
+    emit({ type: 'phase', label: '파일 확인 중' });
+    const check = await postprocess.verify(file, { mode: job.mode, expectSeconds: span });
+
+    if (!check.ok) {
+      return emit({
+        type: 'error',
+        message: check.fatal,
+        code: 'broken-file',
+        raw: friendlyError(state.stderr).raw,
+      });
+    }
+
+    let size = sizeHint;
+    try {
+      size = fs.statSync(file).size;
+    } catch { /* 방금 확인했으므로 무시 */ }
+
+    emit({
+      type: 'done',
+      file,
+      reused: Boolean(state.alreadyHave && !state.lastFile),
+      elapsed: Date.now() - startedAt,
+      size,
+      duration: check.duration,
+      codecs: check.codecs,
+      warnings: check.warnings,
+    });
+  }
+
   child.on('close', (code) => {
     jobs.delete(jobId);
     if (outBuf.trim()) handleLine(outBuf.trim());
@@ -540,13 +616,9 @@ function start(job, settings, onEvent) {
     }
 
     if (code === 0) {
-      emit({
-        type: 'done',
-        file: finalPath,
-        reused: Boolean(state.alreadyHave && !state.lastFile),
-        elapsed: Date.now() - startedAt,
-        size,
-      });
+      // 파일이 생겼다고 끝난 것이 아니다. 자막 시각을 맞추고, 실제로
+      // 열리는 파일인지 확인한 뒤에야 성공이라고 말한다.
+      finishUp(finalPath, size);
     } else {
       const failure = friendlyError(state.stderr);
       emit({

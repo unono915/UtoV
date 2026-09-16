@@ -674,6 +674,8 @@ select {
 }
 .q-item[data-state='error'] .q-sub { color: var(--bad); }
 .q-item[data-state='done'] .q-sub { color: var(--good); }
+.q-item[data-state='warn'] .q-sub { color: var(--mark-deep); }
+.q-item[data-state='warn'] .q-raw { border-color: var(--mark); background: var(--mark-wash); color: var(--ink); }
 
 .q-side { display: flex; align-items: center; gap: 10px; flex: none; }
 .q-pct {
@@ -715,6 +717,7 @@ select {
   transition: width 300ms var(--ease);
 }
 .q-item[data-state='done'] .q-bar > i { background: var(--good); }
+.q-item[data-state='warn'] .q-bar > i { background: var(--mark); }
 .q-item[data-state='error'] .q-bar > i { background: var(--bad); }
 .q-item[data-indet='1'] .q-bar > i { width: 28% !important; animation: slide 1.2s var(--ease) infinite; }
 
