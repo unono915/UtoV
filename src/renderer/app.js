@@ -764,6 +764,19 @@ window.utov.yt.onEvent((evt) => {
       break;
     }
 
+    case 'cutting': {
+      // 받은 뒤 ffmpeg 가 자르거나 합치는 단계. 시간 기준으로만 진행을 알 수 있다.
+      const span = Math.max(0.5, entry.meta.end - entry.meta.start);
+      const pct = Math.min(100, (evt.seconds / span) * 100);
+      el.root.dataset.state = 'running';
+      delete el.root.dataset.indet;
+      el.fill.style.width = `${pct.toFixed(1)}%`;
+      el.pct.textContent = `${pct.toFixed(0)}%`;
+      el.sub.textContent =
+        `${range} · ${entry.meta.whole ? '합치는 중' : '잘라내는 중'} ${hms(evt.seconds)} / ${hms(span)}`;
+      break;
+    }
+
     case 'phase': {
       el.root.dataset.indet = '1';
       el.pct.textContent = '';

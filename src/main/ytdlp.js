@@ -248,6 +248,13 @@ function buildArgs(job, settings, resultFile) {
   return args;
 }
 
+/**
+ * ffmpeg 가 자르거나 합치는 동안 찍는 진행 줄.
+ *   frame=  150 fps= 39 q=-1.0 Lsize=  405KiB time=00:00:05.00 bitrate=...
+ * yt-dlp 의 진행률과 달리 이 단계는 시간 단위로만 알 수 있다.
+ */
+const FF_PROGRESS = /(?:^|\s)(?:frame|size)=.*?\btime=(\d+):(\d{2}):(\d{2})(?:\.(\d+))?/;
+
 const PP_LABELS = {
   Merger: '영상과 소리 합치는 중',
   VideoConvertor: '형식 변환 중',
@@ -318,6 +325,15 @@ function start(job, settings, onEvent) {
       return;
     }
 
+    // 자르기 / 합치기 단계의 진행 상황
+    const ff = line.match(FF_PROGRESS);
+    if (ff) {
+      const seconds =
+        Number(ff[1]) * 3600 + Number(ff[2]) * 60 + Number(ff[3]) + (ff[4] ? Number('0.' + ff[4]) : 0);
+      emit({ type: 'cutting', seconds });
+      return;
+    }
+
     // 최종 저장 경로를 알아내기 위한 보조 파싱
     let m;
     if ((m = line.match(/^\[download\]\s+(.+?)\s+has already been downloaded/))) {
@@ -333,20 +349,31 @@ function start(job, settings, onEvent) {
     emit({ type: 'log', line });
   };
 
+  // ffmpeg 는 진행 줄을 \r 로 덮어쓴다. \n 으로만 나누면 그 단계 내내
+  // 한 줄이 계속 길어지기만 하고 진행 상황을 읽을 수 없다.
+  const NEWLINE = /\r\n|\r|\n/;
+
   let outBuf = '';
   child.stdout.on('data', (chunk) => {
     outBuf += chunk.toString();
-    const parts = outBuf.split(/\r?\n/);
+    const parts = outBuf.split(NEWLINE);
     outBuf = parts.pop();
     for (const l of parts) handleLine(l.trim());
   });
 
+  let errBuf = '';
   child.stderr.on('data', (chunk) => {
     const text = chunk.toString();
     state.stderr += text;
-    for (const l of text.split(/\r?\n/)) {
+    errBuf += text;
+    const parts = errBuf.split(NEWLINE);
+    errBuf = parts.pop();
+    for (const l of parts) {
       const line = l.trim();
-      if (line) emit({ type: 'log', line, stderr: true });
+      if (!line) continue;
+      // ffmpeg 진행 줄은 stderr 로도 온다
+      if (FF_PROGRESS.test(line)) handleLine(line);
+      else emit({ type: 'log', line, stderr: true });
     }
   });
 
