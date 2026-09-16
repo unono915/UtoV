@@ -139,7 +139,7 @@ function probeFile(filePath) {
     if (!ffprobe) return reject(new Error('ffprobe 를 찾지 못했습니다'));
     const args = [
       '-v', 'error',
-      '-show_entries', 'format=duration,format_name:stream=index,codec_type,codec_name',
+      '-show_entries', 'format=duration,format_name:stream=index,codec_type,codec_name,duration',
       '-of', 'json', filePath,
     ];
     execFile(ffprobe, args, { windowsHide: true, timeout: 60000, maxBuffer: 1 << 24 },
@@ -205,6 +205,24 @@ async function verify(filePath, expect = {}) {
     if (gap > Math.max(2, expect.expectSeconds * 0.25)) {
       warnings.push(`요청한 길이는 ${Math.round(expect.expectSeconds)}초인데 파일은 ${Math.round(duration)}초입니다.`);
     }
+  }
+
+  // 컨테이너 길이만 보면 놓치는 경우가 있다. 자막 같은 트랙 하나가 원본 전체
+  // 길이로 남아 있으면, 재생기는 대개 가장 긴 트랙을 총 길이로 잡아서 짧은
+  // 클립이 원본만큼 긴 영상으로 보인다. 그래서 스트림마다 따로 본다.
+  const longest = streams.reduce(
+    (worst, s) => {
+      const d = Number(s.duration) || 0;
+      return d > worst.d ? { d, type: s.codec_type } : worst;
+    },
+    { d: 0, type: null }
+  );
+  if (longest.d > duration + Math.max(2, duration * 0.25)) {
+    const what = { subtitle: '자막', audio: '소리', video: '영상' }[longest.type] || longest.type;
+    warnings.push(
+      `${what} 트랙이 ${Math.round(longest.d)}초로 영상(${Math.round(duration)}초)보다 깁니다. ` +
+      '재생기에 따라 전체 길이가 잘못 표시될 수 있습니다.'
+    );
   }
 
   // 흔한 재생기에서 바로 열리는 코덱인지
