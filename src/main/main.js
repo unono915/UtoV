@@ -41,9 +41,12 @@ async function createWindow() {
   });
 
   win.removeMenu();
-  await win.loadURL(staticServer.url);
 
+  // loadURL 이 끝난 뒤에 붙이면 ready-to-show 를 이미 놓쳤을 수 있다.
+  // 먼저 걸어 두고, 그래도 안 뜨면 로드 완료 시점에 한 번 더 깨운다.
   win.once('ready-to-show', () => win.show());
+  await win.loadURL(staticServer.url);
+  if (!win.isDestroyed() && !win.isVisible()) win.show();
 
   // 창 상태를 화면에 알려서 최대화 아이콘을 바꿔준다
   const pushWindowState = () =>
