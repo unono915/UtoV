@@ -78,7 +78,9 @@
         <div class="tools-row">
           <span class="tool-chip" id="chipYtdlp">yt-dlp <b>확인 중</b></span>
           <span class="tool-chip" id="chipFfmpeg">ffmpeg <b>확인 중</b></span>
+          <span class="tool-chip" id="chipDeno">deno <b>확인 중</b></span>
           <button class="ghost" id="toolUpdate">yt-dlp 갱신</button>
+          <button class="ghost" id="toolEnsure">빠진 도구 받기</button>
         </div>
         <p class="hint">유튜브가 바뀌어 다운로드가 안 될 때는 yt-dlp를 갱신하면 대개 해결됩니다.</p>
       </div>
@@ -95,6 +97,7 @@
       <ul class="setup-list">
         <li><b>yt-dlp</b><span>유튜브에서 영상을 가져옵니다 · 약 18MB</span></li>
         <li><b>ffmpeg</b><span>영상과 소리를 합치고 구간을 잘라냅니다 · 약 80MB</span></li>
+        <li><b>deno</b><span>유튜브 서명을 풉니다 · 약 41MB</span></li>
       </ul>
       <div class="setup-bar" id="setupBar" hidden>
         <div class="bar"><i id="setupFill"></i></div>
@@ -279,6 +282,10 @@
       <button class="icon-btn q-dismiss" aria-label="목록에서 지우기">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
       </button>
+    </div>
+    <div class="q-detail" hidden>
+      <pre class="q-raw"></pre>
+      <button class="ghost q-copy">오류 내용 복사</button>
     </div>
     <div class="q-bar"><i></i></div>
   </li>

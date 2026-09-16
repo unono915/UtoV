@@ -46,6 +46,16 @@ function ffmpegDir() {
   return found ? path.dirname(found) : null;
 }
 
+/**
+ * 유튜브의 서명을 풀려면 자바스크립트 런타임이 필요하다.
+ * yt-dlp 는 런타임 없는 추출을 지원 중단 예정이라고 경고한다.
+ * @returns {{name:string, path:string}|null}
+ */
+function jsRuntime() {
+  const deno = findExe('deno');
+  return deno ? { name: 'deno', path: deno } : null;
+}
+
 const rendererDir = () => path.join(__dirname, '..', 'renderer');
 
 module.exports = {
@@ -56,5 +66,6 @@ module.exports = {
   resolveExe,
   ytdlpPath,
   ffmpegDir,
+  jsRuntime,
   rendererDir,
 };

@@ -190,7 +190,12 @@ ipcMain.handle('yt:probe', async (_e, url, opts) => {
   try {
     return { ok: true, info: await ytdlp.probe(url, store.load(), opts || {}) };
   } catch (err) {
-    return { ok: false, error: err.message, code: err.utovCode || 'unknown' };
+    return {
+      ok: false,
+      error: err.message,
+      code: err.utovCode || 'unknown',
+      raw: err.utovRaw || '',
+    };
   }
 });
 
@@ -209,6 +214,7 @@ ipcMain.handle('yt:cancel', (_e, jobId) => ytdlp.cancel(jobId));
 
 // --- 정보
 ipcMain.handle('app:info', () => ({
+  strategies: ytdlp.STRATEGIES,
   version: app.getVersion(),
   electron: process.versions.electron,
   node: process.versions.node,

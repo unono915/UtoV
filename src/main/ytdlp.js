@@ -8,7 +8,7 @@ const path = require('node:path');
 const { spawn, execFile } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 
-const { ytdlpPath, ffmpegDir } = require('./paths');
+const { ytdlpPath, ffmpegDir, jsRuntime } = require('./paths');
 
 const SENT = '@@UTOV@@';
 const SENT_PP = '@@UTOVPP@@';
@@ -39,7 +39,7 @@ function stamp(sec) {
  * 유튜브가 429(요청 과다)를 돌려줄 때 곧바로 다시 두드리면 상황이 더 나빠진다.
  * 재시도 간격을 지수적으로 늘려서 물러섰다가 다가가게 한다.
  */
-function commonArgs(settings = {}, { safeMode = false } = {}) {
+function commonArgs(settings = {}, { safeMode = false, client = null } = {}) {
   const args = [
     '--ignore-config', '--no-playlist', '--no-colors', '--no-warnings',
     '--extractor-retries', '3',
@@ -47,6 +47,16 @@ function commonArgs(settings = {}, { safeMode = false } = {}) {
   ];
   const ff = ffmpegDir();
   if (ff) args.push('--ffmpeg-location', ff);
+
+  // 유튜브 서명 해독에 필요하다. 없으면 yt-dlp 가 지원 중단 경고를 내고
+  // 일부 포맷을 가져오지 못한다.
+  const js = jsRuntime();
+  if (js) args.push('--js-runtimes', `${js.name}:${js.path}`);
+
+  // 유튜브는 접속 경로(플레이어 클라이언트)마다 제한과 확인 절차가 다르다.
+  // 한 쪽이 막히면 다른 쪽은 열려 있는 경우가 많다.
+  if (client) args.push('--extractor-args', `youtube:player_client=${client}`);
+
   if (settings.cookiesFrom && settings.cookiesFrom !== 'none') {
     args.push('--cookies-from-browser', settings.cookiesFrom);
   }
@@ -54,6 +64,20 @@ function commonArgs(settings = {}, { safeMode = false } = {}) {
   if (safeMode) args.push('--sleep-requests', '1.5');
   return args;
 }
+
+/**
+ * 막혔을 때 차례로 바꿔 볼 접속 방법.
+ *
+ * 플레이어 클라이언트를 바꾸는 방법(tv, mweb, web_safari 등)도 시도해 보았으나
+ * 실제로 확인해 보니 쓸 수 없었다. tv 는 실패하고, mweb 과 tv_simply 는
+ * PO 토큰이 없어 https 포맷을 전부 건너뛰며, ios 는 SABR 실험에 걸린다.
+ * mweb 은 포맷 18(360p) 하나만 주어 화질이 오히려 나빠진다.
+ * 기본 경로가 가장 좋은 포맷을 주므로, 확인된 것만 남긴다.
+ */
+const STRATEGIES = [
+  { label: '기본' },
+  { label: '천천히', safeMode: true },
+];
 
 /**
  * 자주 나오는 yt-dlp 오류를 사람이 읽을 수 있는 안내로 바꾼다.
@@ -72,8 +96,10 @@ const ERROR_TABLE = [
   [/Video unavailable|This video is not available/i,
     '영상을 찾을 수 없습니다. 삭제되었거나 지역 제한이 걸린 영상일 수 있습니다.', 'unavailable'],
   [/This live event will begin/i, '아직 시작하지 않은 예약 라이브입니다.', 'unavailable'],
-  [/HTTP Error 429|Too Many Requests|rate.?limit/i,
-    '유튜브가 요청 속도를 제한했습니다. 천천히 다시 시도하면 대개 풀립니다.',
+  // "rate limit" 같은 넓은 표현은 쓰지 않는다. 경고 줄에도 흔히 섞여 있어
+  // 엉뚱한 실패를 속도 제한으로 잘못 분류하게 된다.
+  [/HTTP Error 429|Too Many Requests/i,
+    '유튜브가 요청 속도를 제한했습니다.',
     'rate-limit'],
   [/Unsupported URL|is not a valid URL/i,
     '지원하지 않는 주소입니다. 유튜브 영상 주소가 맞는지 확인해 주세요.', 'bad-url'],
@@ -82,30 +108,42 @@ const ERROR_TABLE = [
     '네트워크 연결에 문제가 있습니다. 인터넷 상태를 확인해 주세요.', 'network'],
 ];
 
-/** @returns {{message:string, code:string}} */
-function friendlyError(raw) {
-  const text = (raw || '').toString();
+/**
+ * 실패 원인을 분류한다.
+ *
+ * 분류는 실제 실패를 말하는 줄(ERROR)만 보고 한다. 예전에는 누적된 stderr
+ * 전체를 훑었는데, 경고나 ffmpeg 출력에 우연히 걸린 단어가 분류를 가로채면
+ * 엉뚱한 안내가 나가고 사용자는 맞지 않는 조치를 반복하게 된다.
+ *
+ * @returns {{message:string, code:string, raw:string}}
+ */
+function friendlyError(rawText) {
+  const text = (rawText || '').toString();
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const fatal = lines.filter((l) => /^(ERROR\b|yt-dlp: error)/i.test(l));
+
+  // 원인 줄이 있으면 그것만, 없으면 전체를 본다
+  const scope = fatal.length ? fatal.join('\n') : text;
+  const raw = (fatal.length ? fatal : lines.slice(-8)).join('\n').slice(-2000);
+
   for (const [re, message, code] of ERROR_TABLE) {
-    if (re.test(text)) return { message, code };
+    if (re.test(scope)) return { message, code, raw };
   }
 
-  const errLine = text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .reverse()
-    .find((l) => /^ERROR/i.test(l));
+  const last = fatal[fatal.length - 1];
   return {
-    message: errLine ? errLine.replace(/^ERROR:\s*/i, '') : '알 수 없는 오류가 발생했습니다.',
+    message: last ? last.replace(/^ERROR:\s*/i, '') : '알 수 없는 오류가 발생했습니다.',
     code: 'unknown',
+    raw,
   };
 }
 
 /** friendlyError 결과를 Error 객체로 (코드를 함께 실어 보낸다) */
-function toError(raw) {
-  const { message, code } = friendlyError(raw);
+function toError(rawText) {
+  const { message, code, raw } = friendlyError(rawText);
   const err = new Error(message);
   err.utovCode = code;
+  err.utovRaw = raw;
   return err;
 }
 
@@ -227,7 +265,7 @@ function buildArgs(job, settings, resultFile) {
   const concurrency = safeMode ? 1 : Number(settings.concurrency) || 3;
 
   const args = [
-    ...commonArgs(settings, { safeMode }),
+    ...commonArgs(settings, { safeMode, client: job.client || null }),
     '--newline',
     '--progress',
     '--no-quiet',
@@ -465,7 +503,8 @@ function start(job, settings, onEvent) {
         type: 'error',
         message: failure.message,
         code: failure.code,
-        wasSafeMode: Boolean(job.safeMode),
+        raw: failure.raw,
+        tried: { safeMode: Boolean(job.safeMode), client: job.client || null },
         detail: state.stderr.slice(-4000),
       });
     }
@@ -486,4 +525,6 @@ function cancelAll() {
   for (const id of [...jobs.keys()]) cancel(id);
 }
 
-module.exports = { probe, start, cancel, cancelAll, friendlyError, stamp, buildArgs };
+module.exports = {
+  probe, start, cancel, cancelAll, friendlyError, stamp, buildArgs, STRATEGIES,
+};

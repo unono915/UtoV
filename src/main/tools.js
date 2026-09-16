@@ -17,6 +17,10 @@ const YTDLP_URL =
   'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe';
 const FFMPEG_URL =
   'https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip';
+// 유튜브 서명 해독용 자바스크립트 런타임.
+// yt-dlp 는 런타임 없는 추출을 지원 중단 예정이라고 경고한다.
+const DENO_URL =
+  'https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip';
 
 /* ------------------------------------------------------------------ 상태 */
 
@@ -36,9 +40,11 @@ async function versionOf(exe, args) {
 async function status() {
   const ytdlp = findExe('yt-dlp');
   const ffmpeg = findExe('ffmpeg');
-  const [ytdlpVersion, ffmpegVersion] = await Promise.all([
+  const deno = findExe('deno');
+  const [ytdlpVersion, ffmpegVersion, denoVersion] = await Promise.all([
     versionOf(ytdlp, ['--version']),
     versionOf(ffmpeg, ['-version']),
+    versionOf(deno, ['--version']),
   ]);
   return {
     ytdlp: { path: ytdlp, version: ytdlpVersion, ok: Boolean(ytdlpVersion) },
@@ -47,6 +53,12 @@ async function status() {
       version: ffmpegVersion ? ffmpegVersion.replace(/^ffmpeg version /, '').split(' ')[0] : null,
       ok: Boolean(ffmpegVersion),
     },
+    deno: {
+      path: deno,
+      version: denoVersion ? denoVersion.replace(/^deno\s*/i, '').split(' ')[0] : null,
+      ok: Boolean(denoVersion),
+    },
+    // deno 가 없어도 당장은 돌아가므로 실행 가능 여부에는 넣지 않는다
     ready: Boolean(ytdlpVersion) && Boolean(ffmpegVersion),
     binDir: userBinDir(),
   };
@@ -159,6 +171,25 @@ async function ensure(onProgress = () => {}, { force = false } = {}) {
         if (!src) throw new Error(`압축 안에서 ${name} 를 찾지 못했습니다`);
         await fsp.copyFile(src, path.join(bin, name));
       }
+    } finally {
+      await fsp.rm(tmp, { recursive: true, force: true });
+    }
+  }
+
+  // 자바스크립트 런타임. 없어도 당장은 돌지만 yt-dlp 가 지원 중단을 예고했고,
+  // 없으면 일부 포맷을 가져오지 못한다. 실패해도 나머지는 쓸 수 있게 둔다.
+  if (!findExe('deno')) {
+    onProgress({ stage: 'deno', label: 'deno', percent: 0 });
+    const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'utov-deno-'));
+    const zip = path.join(tmp, 'deno.zip');
+    try {
+      await downloadTo(DENO_URL, zip, 'deno', report('deno'));
+      onProgress({ stage: 'extract', label: '압축 푸는 중', percent: null });
+      await unzip(zip, tmp);
+      const src = await findInTree(tmp, 'deno.exe');
+      if (src) await fsp.copyFile(src, path.join(bin, 'deno.exe'));
+    } catch (err) {
+      console.error('[tools] deno 준비 실패 (계속 진행):', err.message);
     } finally {
       await fsp.rm(tmp, { recursive: true, force: true });
     }
