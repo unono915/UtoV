@@ -10,6 +10,7 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
+    "preview": "node scripts/preview.mjs",
     "setup": "node scripts/fetch-binaries.mjs",
     "dist": "electron-builder --win portable nsis",
     "dist:portable": "electron-builder --win portable"
