@@ -57,9 +57,6 @@ function commonArgs(settings = {}, { safeMode = false, client = null } = {}) {
   // 한 쪽이 막히면 다른 쪽은 열려 있는 경우가 많다.
   if (client) args.push('--extractor-args', `youtube:player_client=${client}`);
 
-  if (settings.cookiesFrom && settings.cookiesFrom !== 'none') {
-    args.push('--cookies-from-browser', settings.cookiesFrom);
-  }
   // 안전 모드: 요청 사이를 띄워서 속도 제한에 걸리지 않게 한다
   if (safeMode) args.push('--sleep-requests', '1.5');
   return args;
@@ -86,12 +83,12 @@ const STRATEGIES = [
  */
 const ERROR_TABLE = [
   [/Sign in to confirm|not a bot|cookies are no longer valid/i,
-    '유튜브가 사람인지 확인을 요구했습니다. 설정에서 "브라우저 쿠키"를 Chrome 또는 Edge로 지정한 뒤 다시 시도해 보세요.',
+    '유튜브가 사람인지 확인을 요구했습니다. 잠시 뒤 다시 시도해 보세요. 계속 그러면 로그인이 필요한 영상일 수 있습니다.',
     'bot-check'],
   [/Private video/i, '비공개 영상이라 받을 수 없습니다.', 'unavailable'],
   [/members.only|channel.s members/i, '채널 멤버십 전용 영상입니다.', 'unavailable'],
   [/age.?restricted|confirm your age|inappropriate for some users/i,
-    '연령 제한 영상입니다. 설정에서 "브라우저 쿠키"를 지정하고, 해당 브라우저에 로그인한 상태로 시도하세요.',
+    '연령 제한 영상이라 로그인 없이는 받을 수 없습니다.',
     'bot-check'],
   [/Video unavailable|This video is not available/i,
     '영상을 찾을 수 없습니다. 삭제되었거나 지역 제한이 걸린 영상일 수 있습니다.', 'unavailable'],
@@ -205,6 +202,30 @@ function probe(url, settings = {}, opts = {}) {
   });
 }
 
+/**
+ * 쓸 만한 자막 언어를 추린다.
+ *
+ * 자동 생성 자막은 150개 넘는 언어로 제공되는데, 그 대부분은 기계 번역이라
+ * 수업에 쓸 만하지 않다. 직접 올린 자막과 원어 자동 자막, 그리고 한국어와
+ * 영어만 남긴다. 목록을 좁혀야 자막을 여러 번 내려받다 막히는 일이 없다.
+ */
+function pickSubLangs(info) {
+  const manual = Object.keys(info.subtitles || {});
+  const auto = Object.keys(info.automatic_captions || {});
+  const wanted = (code) => /^(ko|en)(-|$)/i.test(code) || /-orig$/i.test(code);
+
+  const seen = new Set();
+  const out = [];
+  for (const code of [...manual, ...auto]) {
+    if (!wanted(code) || seen.has(code)) continue;
+    seen.add(code);
+    out.push({ code, manual: manual.includes(code) });
+  }
+  // 직접 올린 자막을 먼저, 그다음 한국어, 그다음 나머지
+  const rank = (s) => (s.manual ? 0 : 10) + (/^ko/i.test(s.code) ? 0 : 1);
+  return out.sort((a, b) => rank(a) - rank(b)).slice(0, 6);
+}
+
 /** yt-dlp 의 방대한 JSON 에서 화면에 필요한 것만 추린다 */
 function shapeInfo(info) {
   const formats = Array.isArray(info.formats) ? info.formats : [];
@@ -233,6 +254,8 @@ function shapeInfo(info) {
     heights,
     hasSubtitles: Object.keys(info.subtitles || {}).length > 0,
     hasAutoSubtitles: Object.keys(info.automatic_captions || {}).length > 0,
+    // 실제로 있는 자막 언어. 이 중 하나만 골라 받는다.
+    subLangs: pickSubLangs(info),
     chapters: Array.isArray(info.chapters)
       ? info.chapters.map((c) => ({
           title: c.title || '',
@@ -318,8 +341,22 @@ function buildArgs(job, settings, resultFile) {
   }
 
   // 자막 (영상일 때만 의미가 있다)
-  if (job.mode !== 'audio' && job.subs && job.subs !== 'none') {
-    args.push('--write-subs', '--write-auto-subs', '--sub-langs', 'ko.*,en.*', '--convert-subs', 'srt');
+  //
+  // 예전에는 --sub-langs 'ko.*,en.*' 를 썼는데, 정규식이 ko-orig, ko, en 처럼
+  // 여러 트랙에 걸려 자막만 세 번을 연달아 내려받았다. 유튜브의 자막 엔드포인트는
+  // 제한이 특히 빡빡해서 세 번째 요청에서 429 가 났고, 그 실패가 영상 다운로드
+  // 전체를 무너뜨렸다. 자막을 켜면 받아지지 않던 원인이 이것이다.
+  //
+  // 그래서 트랙을 하나만 받고, 요청 사이를 띄우고, 자막이 실패해도 영상은
+  // 남도록 한다. 대신 exit code 만 믿지 않고 실제 파일이 나왔는지 확인한다.
+  if (job.mode !== 'audio' && job.subs && job.subs !== 'none' && job.subLang) {
+    args.push(
+      '--write-subs', '--write-auto-subs',
+      '--sub-langs', job.subLang,
+      '--sleep-subtitles', '2',
+      '--convert-subs', 'srt',
+      '--ignore-errors'
+    );
     if (job.subs === 'embed') args.push('--embed-subs');
   }
 
@@ -483,13 +520,26 @@ function start(job, settings, onEvent) {
 
     if (state.canceled) return emit({ type: 'canceled' });
 
+    // --ignore-errors 를 쓰면 실패해도 0 으로 끝날 수 있다. 종료 코드만 믿지 않고
+    // 실제로 파일이 나왔는지 본다. 그래야 "성공했다는데 파일이 없는" 일이 없다.
+    let size = null;
+    try {
+      if (finalPath) size = fs.statSync(finalPath).size;
+    } catch {
+      finalPath = null;
+    }
+
+    if (code === 0 && !finalPath) {
+      return emit({
+        type: 'error',
+        message: '다운로드가 끝났는데 저장된 파일을 찾지 못했습니다.',
+        code: 'no-output',
+        raw: friendlyError(state.stderr).raw,
+        detail: state.stderr.slice(-4000),
+      });
+    }
+
     if (code === 0) {
-      let size = null;
-      try {
-        if (finalPath) size = fs.statSync(finalPath).size;
-      } catch {
-        /* 파일을 못 찾아도 성공 처리는 유지 */
-      }
       emit({
         type: 'done',
         file: finalPath,

@@ -105,13 +105,15 @@ const state = {
  * 쿠키를 쓰면 로그인된 요청으로 취급되어 제한이 훨씬 덜하다.
  */
 function rateLimitHint() {
-  if (state.settings && state.settings.cookiesFrom === 'none') {
-    return ' 설정에서 "브라우저 쿠키"를 Chrome이나 Edge로 지정하면 훨씬 덜 걸립니다.';
+  // 실제로 가장 잦은 원인은 자막이다. 유튜브의 자막 엔드포인트는 제한이 빡빡해서
+  // 연달아 몇 번만 요청해도 막힌다.
+  if ($('subs') && $('subs').value !== 'none') {
+    return ' 자막을 "없음"으로 두고 받으면 대개 해결됩니다.';
   }
   if (state.settings && Number(state.settings.concurrency) > 3) {
     return ' 설정에서 "동시 조각 수"를 1이나 3으로 낮춰 보세요.';
   }
-  return ' 학교처럼 여러 사람이 같은 인터넷을 쓰면 더 자주 생깁니다.';
+  return ' 잠시 뒤 다시 시도하거나, 학교망이라면 여러 사람이 함께 쓰는 탓일 수 있습니다.';
 }
 
 const setStatus = (text) => {
@@ -167,7 +169,6 @@ function paintSettings() {
   const s = state.settings;
   $('outDir').textContent = s.outDir;
   $('outDir').title = s.outDir;
-  $('cookies').value = s.cookiesFrom;
   $('concurrency').value = String(s.concurrency);
   $('precise').checked = s.precise !== false;
 }
@@ -180,10 +181,6 @@ $('outDirBtn').onclick = async () => {
 };
 
 $('outDirOpen').onclick = () => window.utov.fs.open(state.settings.outDir);
-
-$('cookies').onchange = async (e) => {
-  state.settings = await window.utov.settings.set({ cookiesFrom: e.target.value });
-};
 
 $('concurrency').onchange = async (e) => {
   state.settings = await window.utov.settings.set({ concurrency: Number(e.target.value) });
@@ -396,6 +393,21 @@ function paintRange({ skipInputs } = {}) {
   $('hEnd').setAttribute('aria-valuetext', hms(state.end));
 
   paintGoNote();
+}
+
+/**
+ * 받을 자막 트랙 하나를 고른다.
+ * 목록은 메인 쪽에서 이미 쓸 만한 순서로 정렬해 보내 준다.
+ */
+function bestSubLang() {
+  const langs = (state.info && state.info.subLangs) || [];
+  return langs.length ? langs[0].code : null;
+}
+
+function labelOfLang(code) {
+  if (/^ko/i.test(code)) return /-orig$/i.test(code) ? '한국어(원본)' : '한국어';
+  if (/^en/i.test(code)) return /-orig$/i.test(code) ? '영어(원본)' : '영어';
+  return code;
 }
 
 /** 썸네일을 트랙 배경으로. 주소는 https 만 받아들인다. */
@@ -662,11 +674,12 @@ async function loadVideo() {
   $('vBest').textContent = res.info.heights && res.info.heights.length ? `${res.info.heights[0]}p` : '—';
   $('vOpen').onclick = () => window.utov.fs.external(res.info.webpageUrl);
 
-  $('subsNote').textContent = res.info.hasSubtitles
-    ? '이 영상에는 직접 올린 자막이 있습니다.'
-    : res.info.hasAutoSubtitles
-      ? '자동 생성 자막만 있습니다.'
-      : '이 영상에는 자막이 없습니다.';
+  const lang = bestSubLang();
+  $('subsNote').textContent = !lang
+    ? '이 영상에는 쓸 만한 자막이 없습니다.'
+    : `${labelOfLang(lang)} 자막을 넣습니다.`;
+  $('subs').disabled = !lang;
+  if (!lang) $('subs').value = 'none';
 
   setTrackArt(res.info.thumbnail);
 
@@ -730,6 +743,8 @@ $('go').onclick = async () => {
     mode: state.mode,
     height: $('quality').value,
     subs: state.mode === 'audio' ? 'none' : $('subs').value,
+    // 트랙을 하나만 받는다. 여러 개를 연달아 받으면 유튜브가 막는다.
+    subLang: bestSubLang(),
     precise: $('precise').checked,
     trim: { enabled: !whole, start: state.start, end: state.end },
   };

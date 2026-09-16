@@ -9,7 +9,6 @@ const DEFAULTS = {
   height: '1080',       // best | 2160 | 1440 | 1080 | 720 | 480 | 360
   precise: true,        // 구간을 프레임 단위로 정확히 자름
   subs: 'none',         // none | file | embed
-  cookiesFrom: 'none',  // none | chrome | edge | firefox | whale
   theme: 'dark',        // dark | light
   // 5 로 두면 유튜브가 속도 제한을 거는 일이 잦다. 3 이면 충분히 빠르면서 안전하다.
   concurrency: 3,
