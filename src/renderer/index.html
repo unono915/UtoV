@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://i.ytimg.com https://*.ytimg.com https://*.ggpht.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self'; font-src 'self';" />
+<title>UtoV</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- ─────────────────────────────────────────────── 제목 표시줄 -->
+  <header class="titlebar">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 28 20" aria-hidden="true">
+        <rect class="mark-film" x="1.5" y="4.5" width="25" height="11" rx="2.5" />
+        <path class="mark-cut" d="M8.5 1.5v17M19.5 1.5v17" />
+      </svg>
+      <span class="brand-name">UtoV</span>
+      <span class="brand-note">유튜브 구간 내려받기</span>
+    </div>
+
+    <div class="titlebar-actions">
+      <button class="icon-btn" id="themeBtn" title="밝게 / 어둡게" aria-label="테마 바꾸기">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path class="i-sun" d="M8 2.6V1M8 15v-1.6M13.4 8H15M1 8h1.6M11.8 4.2l1.1-1.1M3.1 12.9l1.1-1.1M11.8 11.8l1.1 1.1M3.1 3.1l1.1 1.1"/><circle class="i-sun" cx="8" cy="8" r="3.1"/><path class="i-moon" d="M13 9.6A5.6 5.6 0 0 1 6.4 3a5.6 5.6 0 1 0 6.6 6.6Z"/></svg>
+      </button>
+      <button class="icon-btn" id="settingsBtn" title="설정" aria-label="설정" aria-expanded="false">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.4v1.7M8 12.9v1.7M14.6 8h-1.7M3.1 8H1.4M12.67 3.33l-1.2 1.2M4.53 11.47l-1.2 1.2M12.67 12.67l-1.2-1.2M4.53 4.53l-1.2-1.2"/></svg>
+      </button>
+      <div class="titlebar-sep"></div>
+      <button class="win-btn" id="winMin" aria-label="최소화"><svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg></button>
+      <button class="win-btn" id="winMax" aria-label="최대화"><svg viewBox="0 0 10 10"><rect class="w-max" x="0.5" y="0.5" width="9" height="9"/><path class="w-restore" d="M2.5 2.5h7v7h-7z M0.5 7.5v-7h7"/></svg></button>
+      <button class="win-btn danger" id="winClose" aria-label="닫기"><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></button>
+    </div>
+  </header>
+
+  <!-- ─────────────────────────────────────────────── 설정 서랍 -->
+  <div class="drawer" id="drawer" hidden>
+    <div class="drawer-inner">
+
+      <div class="field">
+        <label for="outDir">저장 위치</label>
+        <div class="path-row">
+          <output class="path" id="outDir" title=""></output>
+          <button class="ghost" id="outDirBtn">변경</button>
+          <button class="ghost" id="outDirOpen">열기</button>
+        </div>
+      </div>
+
+      <div class="field-grid">
+        <div class="field">
+          <label for="cookies">브라우저 쿠키</label>
+          <select id="cookies">
+            <option value="none">사용 안 함</option>
+            <option value="chrome">Chrome</option>
+            <option value="edge">Edge</option>
+            <option value="firefox">Firefox</option>
+            <option value="whale">Whale</option>
+          </select>
+          <p class="hint">"사람인지 확인" 메시지나 연령 제한 영상에서 필요합니다. 해당 브라우저는 닫아 두세요.</p>
+        </div>
+
+        <div class="field">
+          <label for="concurrency">동시 조각 수</label>
+          <select id="concurrency">
+            <option value="1">1 (가장 안전)</option>
+            <option value="3">3</option>
+            <option value="5">5 (권장)</option>
+            <option value="8">8 (가장 빠름)</option>
+          </select>
+          <p class="hint">숫자가 클수록 빠르지만 학교망에서는 차단될 수 있습니다.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>도구</label>
+        <div class="tools-row">
+          <span class="tool-chip" id="chipYtdlp">yt-dlp <b>확인 중</b></span>
+          <span class="tool-chip" id="chipFfmpeg">ffmpeg <b>확인 중</b></span>
+          <button class="ghost" id="toolUpdate">yt-dlp 갱신</button>
+        </div>
+        <p class="hint">유튜브가 바뀌어 다운로드가 안 될 때는 yt-dlp를 갱신하면 대개 해결됩니다.</p>
+      </div>
+
+      <p class="version" id="version"></p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────── 첫 실행 준비 -->
+  <section class="setup" id="setup" hidden>
+    <div class="setup-inner">
+      <h1>처음이라 준비가 조금 필요합니다</h1>
+      <p>영상을 받고 구간을 잘라내는 데 쓰는 도구 두 가지를 내려받습니다. 한 번만 하면 됩니다.</p>
+      <ul class="setup-list">
+        <li><b>yt-dlp</b><span>유튜브에서 영상을 가져옵니다 · 약 18MB</span></li>
+        <li><b>ffmpeg</b><span>영상과 소리를 합치고 구간을 잘라냅니다 · 약 80MB</span></li>
+      </ul>
+      <div class="setup-bar" id="setupBar" hidden>
+        <div class="bar"><i id="setupFill"></i></div>
+        <p class="setup-status" id="setupStatus"></p>
+      </div>
+      <p class="setup-error" id="setupError" hidden></p>
+      <button class="primary" id="setupGo">준비 시작</button>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── 본체 -->
+  <main class="stage" id="stage">
+
+    <!-- 주소 입력 -->
+    <section class="intake">
+      <div class="intake-row">
+        <input id="url" type="text" spellcheck="false" autocomplete="off"
+               placeholder="유튜브 영상 주소를 붙여 넣으세요" aria-label="유튜브 영상 주소" />
+        <button class="primary" id="load">불러오기</button>
+      </div>
+      <p class="notice" id="intakeMsg" hidden></p>
+    </section>
+
+    <!-- 영상 -->
+    <section class="work" id="work" hidden>
+
+      <div class="work-head">
+        <div class="preview">
+          <div class="preview-frame" id="previewFrame">
+            <div id="player"></div>
+          </div>
+          <p class="preview-fallback" id="previewFallback" hidden>미리보기를 불러오지 못했습니다. 아래에서 시간을 직접 입력하세요.</p>
+        </div>
+        <div class="meta">
+          <h1 class="meta-title" id="vTitle"></h1>
+          <p class="meta-sub" id="vChannel"></p>
+          <dl class="meta-facts">
+            <div><dt>길이</dt><dd id="vDuration">—</dd></div>
+            <div><dt>올린 날</dt><dd id="vDate">—</dd></div>
+            <div><dt>최고 화질</dt><dd id="vBest">—</dd></div>
+          </dl>
+          <button class="link-btn" id="vOpen">유튜브에서 보기</button>
+        </div>
+      </div>
+
+      <!-- 구간 -->
+      <section class="segment">
+        <div class="section-head">
+          <h2>구간</h2>
+          <div class="section-head-right">
+            <span class="seg-length" id="segLength">—</span>
+            <button class="ghost" id="segAll">전체로</button>
+          </div>
+        </div>
+
+        <div class="track" id="track">
+          <div class="track-art" id="trackArt"></div>
+          <div class="track-dim track-dim-a" id="dimA"></div>
+          <div class="track-dim track-dim-b" id="dimB"></div>
+          <div class="track-sel" id="trackSel"><span class="track-sel-label" id="trackSelLabel"></span></div>
+          <div class="playhead" id="playhead" hidden></div>
+          <div class="handle handle-start" id="hStart" tabindex="0" role="slider"
+               aria-label="시작 지점" aria-valuemin="0" aria-valuenow="0"><span class="grip"></span></div>
+          <div class="handle handle-end" id="hEnd" tabindex="0" role="slider"
+               aria-label="끝 지점" aria-valuemin="0" aria-valuenow="0"><span class="grip"></span></div>
+          <div class="track-ticks" id="ticks"></div>
+        </div>
+
+        <div class="seg-row">
+          <div class="time-pair">
+            <label class="time-field">
+              <span>시작</span>
+              <input id="tStart" class="time-input" inputmode="numeric" spellcheck="false" value="00:00:00" />
+            </label>
+            <span class="time-dash">–</span>
+            <label class="time-field">
+              <span>끝</span>
+              <input id="tEnd" class="time-input" inputmode="numeric" spellcheck="false" value="00:00:00" />
+            </label>
+          </div>
+
+          <div class="seg-buttons">
+            <button class="ghost" id="markStart">여기를 시작으로</button>
+            <button class="ghost" id="markEnd">여기를 끝으로</button>
+            <button class="ghost" id="playSeg">구간 재생</button>
+          </div>
+        </div>
+
+        <div class="chapters" id="chapters" hidden>
+          <span class="chapters-label">챕터</span>
+          <div class="chapter-chips" id="chapterChips"></div>
+        </div>
+      </section>
+
+      <!-- 저장 옵션 -->
+      <section class="options">
+        <div class="section-head"><h2>저장</h2></div>
+
+        <div class="opt-row">
+          <span class="opt-label">형식</span>
+          <div class="segmented" role="radiogroup" aria-label="형식">
+            <button role="radio" aria-checked="true" data-mode="video">영상 MP4</button>
+            <button role="radio" aria-checked="false" data-mode="audio">소리 MP3</button>
+          </div>
+        </div>
+
+        <div class="opt-row" id="rowQuality">
+          <label class="opt-label" for="quality">화질</label>
+          <select id="quality"></select>
+        </div>
+
+        <div class="opt-row" id="rowSubs">
+          <label class="opt-label" for="subs">자막</label>
+          <select id="subs">
+            <option value="none">없음</option>
+            <option value="file">따로 저장 (.srt)</option>
+            <option value="embed">영상에 넣기</option>
+          </select>
+          <span class="opt-note" id="subsNote"></span>
+        </div>
+
+        <div class="opt-row">
+          <span class="opt-label">잘라내기</span>
+          <label class="check">
+            <input type="checkbox" id="precise" checked />
+            <span>지정한 시각에 정확히 맞추기</span>
+          </label>
+          <span class="opt-note">끄면 더 빠르지만 시작이 몇 초 앞당겨질 수 있습니다.</span>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button class="primary big" id="go">내려받기</button>
+        <p class="actions-note" id="goNote"></p>
+      </div>
+    </section>
+
+    <!-- 작업 목록 -->
+    <section class="queue" id="queue" hidden>
+      <div class="section-head">
+        <h2>작업</h2>
+        <button class="ghost" id="clearDone">끝난 항목 지우기</button>
+      </div>
+      <ol class="queue-list" id="queueList"></ol>
+    </section>
+
+  </main>
+
+  <footer class="statusbar">
+    <span id="statusLeft">준비됨</span>
+    <span class="status-right" id="statusRight"></span>
+  </footer>
+</div>
+
+<template id="tplQueueItem">
+  <li class="q-item">
+    <div class="q-main">
+      <p class="q-title"></p>
+      <p class="q-sub"></p>
+    </div>
+    <div class="q-side">
+      <span class="q-pct"></span>
+      <button class="ghost q-action"></button>
+      <button class="icon-btn q-dismiss" aria-label="목록에서 지우기">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      </button>
+    </div>
+    <div class="q-bar"><i></i></div>
+  </li>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

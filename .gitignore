@@ -1,0 +1,16 @@
+# 의존성
+node_modules/
+
+# 앱이 첫 실행 때 내려받는 외부 도구 (yt-dlp, ffmpeg — 합쳐서 300MB 이상)
+bin/
+
+# 빌드 결과물
+release/
+dist/
+
+# 로그 / 임시
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+desktop.ini

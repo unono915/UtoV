@@ -1,0 +1,62 @@
+{
+  "name": "utov",
+  "productName": "UtoV",
+  "version": "1.0.0",
+  "description": "유튜브 영상을 구간 지정하여 내려받는 데스크톱 도구",
+  "author": {
+    "name": "UtoV"
+  },
+  "license": "MIT",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "setup": "node scripts/fetch-binaries.mjs",
+    "dist": "electron-builder --win portable nsis",
+    "dist:portable": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "kr.utov.app",
+    "productName": "UtoV",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "${productName}-${version}-${env.TARGETSUFFIX}.${ext}"
+    },
+    "portable": {
+      "artifactName": "UtoV-${version}-무설치.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "UtoV",
+      "artifactName": "UtoV-${version}-설치.exe"
+    },
+    "compression": "maximum"
+  }
+}
