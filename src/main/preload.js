@@ -36,7 +36,7 @@ contextBridge.exposeInMainWorld('utov', {
 
   // 다운로드
   yt: {
-    probe: (url) => ipcRenderer.invoke('yt:probe', url),
+    probe: (url, opts) => ipcRenderer.invoke('yt:probe', url, opts),
     download: (job) => ipcRenderer.invoke('yt:download', job),
     cancel: (jobId) => ipcRenderer.invoke('yt:cancel', jobId),
     onEvent: (cb) => {

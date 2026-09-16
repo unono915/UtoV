@@ -33,40 +33,61 @@ function stamp(sec) {
   return h + '-' + m + '-' + ss;
 }
 
-/** 모든 호출에 공통으로 붙는 인자 */
-function commonArgs(settings = {}) {
-  const args = ['--ignore-config', '--no-playlist', '--no-colors', '--no-warnings'];
+/**
+ * 모든 호출에 공통으로 붙는 인자.
+ *
+ * 유튜브가 429(요청 과다)를 돌려줄 때 곧바로 다시 두드리면 상황이 더 나빠진다.
+ * 재시도 간격을 지수적으로 늘려서 물러섰다가 다가가게 한다.
+ */
+function commonArgs(settings = {}, { safeMode = false } = {}) {
+  const args = [
+    '--ignore-config', '--no-playlist', '--no-colors', '--no-warnings',
+    '--extractor-retries', '3',
+    '--retry-sleep', 'extractor:exp=2:60',
+  ];
   const ff = ffmpegDir();
   if (ff) args.push('--ffmpeg-location', ff);
   if (settings.cookiesFrom && settings.cookiesFrom !== 'none') {
     args.push('--cookies-from-browser', settings.cookiesFrom);
   }
+  // 안전 모드: 요청 사이를 띄워서 속도 제한에 걸리지 않게 한다
+  if (safeMode) args.push('--sleep-requests', '1.5');
   return args;
 }
 
-/** 자주 나오는 yt-dlp 오류를 사람이 읽을 수 있는 안내로 */
+/**
+ * 자주 나오는 yt-dlp 오류를 사람이 읽을 수 있는 안내로 바꾼다.
+ * 세 번째 값은 화면에서 어떤 조치를 권할지 고르기 위한 코드다.
+ * 위에서부터 먼저 맞는 것을 쓰므로 구체적인 것을 앞에 둔다.
+ */
 const ERROR_TABLE = [
   [/Sign in to confirm|not a bot|cookies are no longer valid/i,
-    '유튜브가 사람인지 확인을 요구했습니다. 고급 설정에서 "브라우저 쿠키"를 Chrome 또는 Edge로 지정한 뒤 다시 시도해 보세요.'],
-  [/Private video/i, '비공개 영상이라 받을 수 없습니다.'],
-  [/members.only|channel.s members/i, '채널 멤버십 전용 영상입니다.'],
+    '유튜브가 사람인지 확인을 요구했습니다. 설정에서 "브라우저 쿠키"를 Chrome 또는 Edge로 지정한 뒤 다시 시도해 보세요.',
+    'bot-check'],
+  [/Private video/i, '비공개 영상이라 받을 수 없습니다.', 'unavailable'],
+  [/members.only|channel.s members/i, '채널 멤버십 전용 영상입니다.', 'unavailable'],
   [/age.?restricted|confirm your age|inappropriate for some users/i,
-    '연령 제한 영상입니다. 고급 설정에서 "브라우저 쿠키"를 지정하고, 해당 브라우저에 로그인한 상태로 시도하세요.'],
+    '연령 제한 영상입니다. 설정에서 "브라우저 쿠키"를 지정하고, 해당 브라우저에 로그인한 상태로 시도하세요.',
+    'bot-check'],
   [/Video unavailable|This video is not available/i,
-    '영상을 찾을 수 없습니다. 삭제되었거나 지역 제한이 걸린 영상일 수 있습니다.'],
-  [/This live event will begin/i, '아직 시작하지 않은 예약 라이브입니다.'],
-  [/HTTP Error 429|Too Many Requests/i,
-    '요청이 너무 잦아 유튜브가 잠시 차단했습니다. 몇 분 뒤에 다시 시도하세요.'],
+    '영상을 찾을 수 없습니다. 삭제되었거나 지역 제한이 걸린 영상일 수 있습니다.', 'unavailable'],
+  [/This live event will begin/i, '아직 시작하지 않은 예약 라이브입니다.', 'unavailable'],
+  [/HTTP Error 429|Too Many Requests|rate.?limit/i,
+    '유튜브가 요청 속도를 제한했습니다. 천천히 다시 시도하면 대개 풀립니다.',
+    'rate-limit'],
   [/Unsupported URL|is not a valid URL/i,
-    '지원하지 않는 주소입니다. 유튜브 영상 주소가 맞는지 확인해 주세요.'],
-  [/ffmpeg|ffprobe/i, 'ffmpeg 처리 중 문제가 생겼습니다. 설정에서 도구를 다시 받아 보세요.'],
+    '지원하지 않는 주소입니다. 유튜브 영상 주소가 맞는지 확인해 주세요.', 'bad-url'],
+  [/ffmpeg|ffprobe/i, 'ffmpeg 처리 중 문제가 생겼습니다. 설정에서 도구를 다시 받아 보세요.', 'tools'],
   [/Unable to download|Connection|timed out|getaddrinfo|ssl/i,
-    '네트워크 연결에 문제가 있습니다. 인터넷 상태를 확인해 주세요.'],
+    '네트워크 연결에 문제가 있습니다. 인터넷 상태를 확인해 주세요.', 'network'],
 ];
 
+/** @returns {{message:string, code:string}} */
 function friendlyError(raw) {
   const text = (raw || '').toString();
-  for (const [re, msg] of ERROR_TABLE) if (re.test(text)) return msg;
+  for (const [re, message, code] of ERROR_TABLE) {
+    if (re.test(text)) return { message, code };
+  }
 
   const errLine = text
     .split('\n')
@@ -74,7 +95,18 @@ function friendlyError(raw) {
     .filter(Boolean)
     .reverse()
     .find((l) => /^ERROR/i.test(l));
-  return errLine ? errLine.replace(/^ERROR:\s*/i, '') : '알 수 없는 오류가 발생했습니다.';
+  return {
+    message: errLine ? errLine.replace(/^ERROR:\s*/i, '') : '알 수 없는 오류가 발생했습니다.',
+    code: 'unknown',
+  };
+}
+
+/** friendlyError 결과를 Error 객체로 (코드를 함께 실어 보낸다) */
+function toError(raw) {
+  const { message, code } = friendlyError(raw);
+  const err = new Error(message);
+  err.utovCode = code;
+  return err;
 }
 
 /** 윈도우에서 ffmpeg 같은 자식 프로세스까지 확실히 종료 */
@@ -93,9 +125,9 @@ function killTree(child) {
 
 /* --------------------------------------------------------- 영상 정보 조회 */
 
-function probe(url, settings = {}) {
+function probe(url, settings = {}, opts = {}) {
   return new Promise((resolve, reject) => {
-    const args = [...commonArgs(settings), '-J', url];
+    const args = [...commonArgs(settings, opts), '-J', url];
     const child = spawn(ytdlpPath(), args, { windowsHide: true });
 
     let out = '';
@@ -123,7 +155,7 @@ function probe(url, settings = {}) {
 
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code !== 0) return reject(new Error(friendlyError(err || out)));
+      if (code !== 0) return reject(toError(err || out));
       let info;
       try {
         info = JSON.parse(out);
@@ -189,9 +221,13 @@ function formatSelector(mode, height) {
 
 function buildArgs(job, settings, resultFile) {
   const trimming = Boolean(job.trim && job.trim.enabled);
+  const safeMode = Boolean(job.safeMode);
+
+  // 안전 모드에서는 한 번에 한 조각씩만, 그것도 사이를 띄워 가며 받는다
+  const concurrency = safeMode ? 1 : Number(settings.concurrency) || 3;
 
   const args = [
-    ...commonArgs(settings),
+    ...commonArgs(settings, { safeMode }),
     '--newline',
     '--progress',
     '--no-quiet',
@@ -199,8 +235,10 @@ function buildArgs(job, settings, resultFile) {
     '--no-mtime',
     '--windows-filenames',
     '--retries', '10',
+    '--retry-sleep', 'http:exp=2:120',
     '--fragment-retries', '10',
-    '--concurrent-fragments', String(settings.concurrency || 5),
+    '--retry-sleep', 'fragment:exp=1:60',
+    '--concurrent-fragments', String(concurrency),
     '--print-to-file', 'after_move:filepath', resultFile,
     '--progress-template',
     'download:' + SENT +
@@ -210,6 +248,9 @@ function buildArgs(job, settings, resultFile) {
     '--progress-template',
     'postprocess:' + SENT_PP + '|%(progress.status)s|%(postprocessor)s',
   ];
+
+  // 안전 모드에서는 각 파일을 받기 전에도 잠깐 쉬어 간다
+  if (safeMode) args.push('--sleep-interval', '2', '--max-sleep-interval', '6');
 
   // 저장 이름 — 구간을 지정했으면 파일명에 남겨서 서로 겹치지 않게.
   // --trim-filenames 는 경로 전체를 자르기 때문에(저장 폴더가 길면 제목이 뭉개진다)
@@ -419,9 +460,12 @@ function start(job, settings, onEvent) {
         size,
       });
     } else {
+      const failure = friendlyError(state.stderr);
       emit({
         type: 'error',
-        message: friendlyError(state.stderr),
+        message: failure.message,
+        code: failure.code,
+        wasSafeMode: Boolean(job.safeMode),
         detail: state.stderr.slice(-4000),
       });
     }

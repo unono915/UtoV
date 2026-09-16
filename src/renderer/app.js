@@ -95,8 +95,23 @@ const state = {
   player: null,
   playerReady: false,
   previewUntil: null,
+  slowProbe: false,
   jobs: new Map(),
 };
+
+/**
+ * 속도 제한에 걸렸을 때 실제로 도움이 되는 안내.
+ * 쿠키를 쓰면 로그인된 요청으로 취급되어 제한이 훨씬 덜하다.
+ */
+function rateLimitHint() {
+  if (state.settings && state.settings.cookiesFrom === 'none') {
+    return ' 설정에서 "브라우저 쿠키"를 Chrome이나 Edge로 지정하면 훨씬 덜 걸립니다.';
+  }
+  if (state.settings && Number(state.settings.concurrency) > 3) {
+    return ' 설정에서 "동시 조각 수"를 1이나 3으로 낮춰 보세요.';
+  }
+  return ' 학교처럼 여러 사람이 같은 인터넷을 쓰면 더 자주 생깁니다.';
+}
 
 const setStatus = (text) => {
   $('statusLeft').textContent = text;
@@ -570,20 +585,29 @@ async function loadVideo() {
 
   $('load').disabled = true;
   $('load').textContent = '불러오는 중';
-  notice('영상 정보를 확인하고 있습니다…');
+  notice(state.slowProbe ? '천천히 다시 확인하고 있습니다…' : '영상 정보를 확인하고 있습니다…');
   setStatus('영상 정보 확인 중…');
 
-  const res = await window.utov.yt.probe(raw);
+  const res = await window.utov.yt.probe(raw, { safeMode: state.slowProbe });
 
   $('load').disabled = false;
-  $('load').textContent = '불러오기';
 
   if (!res.ok) {
-    notice(res.error, 'error');
+    if (res.code === 'rate-limit') {
+      // 유튜브가 속도를 늦추라고 한 것이므로, 다음 시도는 실제로 천천히 한다
+      state.slowProbe = true;
+      $('load').textContent = '천천히 다시';
+      notice(res.error + rateLimitHint(), 'error');
+    } else {
+      $('load').textContent = '불러오기';
+      notice(res.error, 'error');
+    }
     setStatus('준비됨');
     return;
   }
 
+  state.slowProbe = false;
+  $('load').textContent = '불러오기';
   notice(null);
   setStatus('준비됨');
   state.info = res.info;
@@ -699,7 +723,9 @@ function addQueueItem(jobId, meta) {
     fill: node.querySelector('.q-bar > i'),
   };
 
-  const range = meta.whole ? '전체' : `${hms(meta.start)} – ${hms(meta.end)}`;
+  const range =
+    (meta.whole ? '전체' : `${hms(meta.start)} – ${hms(meta.end)}`) +
+    (meta.safeMode ? ' · 천천히' : '');
   el.title.textContent = meta.title;
   el.title.title = meta.title;
   el.sub.textContent = `${range} · 시작하는 중…`;
@@ -830,12 +856,22 @@ window.utov.yt.onEvent((evt) => {
       delete el.root.dataset.indet;
       el.fill.style.width = '100%';
       el.pct.textContent = '';
-      el.sub.textContent = evt.message;
-      el.sub.title = evt.message;
       el.action.disabled = false;
-      el.action.textContent = '다시';
-      el.action.onclick = () => retry(evt.jobId);
-      setStatus('오류가 났습니다');
+
+      const rateLimited = evt.code === 'rate-limit';
+      const text = rateLimited ? evt.message + rateLimitHint() : evt.message;
+      el.sub.textContent = text;
+      el.sub.title = text;
+
+      if (rateLimited && !evt.wasSafeMode) {
+        // 한 조각씩 천천히 받으면 대개 통과한다
+        el.action.textContent = '천천히 다시';
+        el.action.onclick = () => retry(evt.jobId, { safeMode: true });
+      } else {
+        el.action.textContent = '다시';
+        el.action.onclick = () => retry(evt.jobId);
+      }
+      setStatus(rateLimited ? '유튜브가 속도를 제한했습니다' : '오류가 났습니다');
       break;
     }
     default:
@@ -843,17 +879,19 @@ window.utov.yt.onEvent((evt) => {
   }
 });
 
-async function retry(oldJobId) {
+async function retry(oldJobId, { safeMode = false } = {}) {
   const entry = state.jobs.get(oldJobId);
   if (!entry) return;
-  const res = await window.utov.yt.download(entry.meta.job);
+
+  const job = Object.assign({}, entry.meta.job, { safeMode });
+  const res = await window.utov.yt.download(job);
   if (!res.ok) {
     entry.el.sub.textContent = res.error;
     return;
   }
   entry.el.root.remove();
   state.jobs.delete(oldJobId);
-  addQueueItem(res.jobId, entry.meta);
+  addQueueItem(res.jobId, Object.assign({}, entry.meta, { job, safeMode }));
 }
 
 $('clearDone').onclick = () => {

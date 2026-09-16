@@ -11,7 +11,8 @@ const DEFAULTS = {
   subs: 'none',         // none | file | embed
   cookiesFrom: 'none',  // none | chrome | edge | firefox | whale
   theme: 'dark',        // dark | light
-  concurrency: 5,
+  // 5 로 두면 유튜브가 속도 제한을 거는 일이 잦다. 3 이면 충분히 빠르면서 안전하다.
+  concurrency: 3,
 };
 
 let cache = null;

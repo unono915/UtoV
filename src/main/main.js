@@ -186,11 +186,11 @@ ipcMain.handle('shell:openExternal', async (_e, url) => {
 ipcMain.handle('fs:exists', (_e, p) => Boolean(p) && fs.existsSync(p));
 
 // --- yt-dlp
-ipcMain.handle('yt:probe', async (_e, url) => {
+ipcMain.handle('yt:probe', async (_e, url, opts) => {
   try {
-    return { ok: true, info: await ytdlp.probe(url, store.load()) };
+    return { ok: true, info: await ytdlp.probe(url, store.load(), opts || {}) };
   } catch (err) {
-    return { ok: false, error: err.message };
+    return { ok: false, error: err.message, code: err.utovCode || 'unknown' };
   }
 });
 
