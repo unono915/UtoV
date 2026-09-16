@@ -5,6 +5,8 @@
 
 <img src="assets/icon.png" width="72" alt="UtoV 아이콘" />
 
+**[내려받기 및 소개 페이지 →](https://unono915.github.io/UtoV/)**
+
 ## 무엇을 할 수 있나
 
 - 유튜브 주소를 붙여 넣으면 제목, 길이, 화질, 챕터를 읽어 옵니다.

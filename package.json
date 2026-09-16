@@ -38,7 +38,7 @@
       "icon": "assets/icon.ico"
     },
     "portable": {
-      "artifactName": "UtoV-${version}-portable.exe"
+      "artifactName": "UtoV-portable.exe"
     },
     "nsis": {
       "oneClick": false,
@@ -46,7 +46,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "UtoV",
-      "artifactName": "UtoV-${version}-setup.exe"
+      "artifactName": "UtoV-setup.exe"
     },
     "compression": "maximum"
   }
