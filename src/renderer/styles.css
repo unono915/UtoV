@@ -367,6 +367,31 @@ select {
 }
 .notice[data-kind='error'] { color: var(--bad); background: var(--bad-wash); }
 
+/* 아직 영상을 안 불러왔을 때의 짧은 안내 */
+.primer { margin-top: 44px; border-top: 1px solid var(--rule); }
+.primer li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 8rem) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px 18px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.primer-n {
+  font-family: var(--mono);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--mark-deep);
+  font-weight: 640;
+}
+.primer b { font-weight: 620; }
+.primer span:last-child { color: var(--ink-2); font-size: var(--t-sm); }
+
+@media (max-width: 720px) {
+  .primer li { grid-template-columns: 26px minmax(0, 1fr); }
+  .primer span:last-child { grid-column: 2; }
+}
+
 /* 영상 */
 .work { padding-bottom: 40px !important; animation: rise 260ms var(--ease); }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }

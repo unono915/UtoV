@@ -30,25 +30,15 @@
       "src/**/*",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "bin",
-        "to": "bin",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
     "win": {
       "target": [
         "portable",
         "nsis"
       ],
-      "icon": "assets/icon.ico",
-      "artifactName": "${productName}-${version}-${env.TARGETSUFFIX}.${ext}"
+      "icon": "assets/icon.ico"
     },
     "portable": {
-      "artifactName": "UtoV-${version}-무설치.exe"
+      "artifactName": "UtoV-${version}-portable.exe"
     },
     "nsis": {
       "oneClick": false,
@@ -56,7 +46,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "UtoV",
-      "artifactName": "UtoV-${version}-설치.exe"
+      "artifactName": "UtoV-${version}-setup.exe"
     },
     "compression": "maximum"
   }

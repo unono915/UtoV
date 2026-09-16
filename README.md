@@ -52,7 +52,20 @@ npm run setup
 npm run dist
 ```
 
-`release/` 에 무설치 실행 파일과 설치 파일이 생깁니다. 무설치 쪽이 나눠 쓰기 편합니다.
+`release/` 에 두 가지가 생깁니다.
+
+| 파일 | 쓰임 |
+|---|---|
+| `UtoV-1.0.0-portable.exe` | 무설치. 복사해서 두 번 누르면 실행됩니다. 나눠 쓰기 편합니다. |
+| `UtoV-1.0.0-setup.exe` | 설치본. 시작 메뉴와 바탕화면 바로가기를 만듭니다. |
+
+yt-dlp 와 ffmpeg 는 배포 파일에 넣지 않습니다. 합쳐서 300MB 가 넘고,
+yt-dlp 는 유튜브 변경에 맞춰 자주 갱신해야 하기 때문입니다.
+대신 앱이 첫 실행 때 내려받아 `%APPDATA%\UtoV\bin` 에 둡니다.
+
+**학교망에서 GitHub 가 막혀 있다면** 다른 PC 에서 `npm run setup` 으로 받은
+`bin/` 안의 `yt-dlp.exe`, `ffmpeg.exe`, `ffprobe.exe` 세 파일을
+그 PC 의 `%APPDATA%\UtoV\bin` 에 직접 넣어 주면 됩니다.
 
 ## 구조
 

@@ -610,6 +610,7 @@ async function loadVideo() {
   drawTicks();
   paintRange();
 
+  $('primer').hidden = true;
   $('work').hidden = false;
   $('previewFallback').hidden = true;
   mountPlayer(res.info.id);
