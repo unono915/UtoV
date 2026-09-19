@@ -95,7 +95,9 @@
 
       <!-- 단추를 스크립트로 잠그지 않는다. 스크립트가 어긋나면 모두 체크해도
            시작할 수 없는 상태에 갇힌다. 빠진 항목은 브라우저가 짚어 준다. -->
-      <form id="consentForm" autocomplete="off">
+      <!-- onsubmit 은 스크립트가 붙지 않았을 때를 위한 안전장치다. 폼이 그대로
+           전송되면 화면이 통째로 다시 불려 아무 일도 일어나지 않는다. -->
+      <form id="consentForm" autocomplete="off" onsubmit="return false">
         <ul class="consent-checks">
           <li><label><input type="checkbox" name="c1" required data-agree /><span>학교 수업 등 <b>교육 목적으로만</b> 사용하겠습니다.</span></label></li>
           <li><label><input type="checkbox" name="c2" required data-agree /><span>내려받은 영상을 <b>다시 배포하거나 공개하지 않겠습니다.</b></span></label></li>

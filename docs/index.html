@@ -20,14 +20,27 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
 <link rel="stylesheet" href="styles.css" />
 <script>
-  // 동의 전에는 본문이 잠깐이라도 보이지 않도록 그리기 전에 표시해 둔다
-  try {
-    if (localStorage.getItem('utov-agreed-v1') !== 'yes') {
-      document.documentElement.setAttribute('data-gate', 'on');
+  // 동의 전에는 본문이 잠깐이라도 보이지 않도록 그리기 전에 판단한다.
+  (function () {
+    var KEY = 'utov-agreed-v1';
+    var agreed = false;
+    try { agreed = localStorage.getItem(KEY) === 'yes'; } catch (e) { agreed = false; }
+
+    // 아래 폼은 스크립트가 가로채서 처리하지만, 어떤 이유로든 그것이
+    // 어긋나면 폼이 그대로 전송되어 같은 주소로 되돌아온다. 그때도
+    // 사용자는 분명히 세 항목을 체크하고 눌렀다. 주소에 그 흔적이
+    // 실려 오므로 동의로 인정하고 주소를 정리한다.
+    if (!agreed) {
+      var q = location.search;
+      if (q.indexOf('a1=') > -1 && q.indexOf('a2=') > -1 && q.indexOf('a3=') > -1) {
+        agreed = true;
+        try { localStorage.setItem(KEY, 'yes'); } catch (e) { /* 저장이 막혀 있어도 이번 방문은 통과 */ }
+        try { history.replaceState(null, '', location.pathname); } catch (e) { /* 주소 정리는 실패해도 그만 */ }
+      }
     }
-  } catch (e) {
-    document.documentElement.setAttribute('data-gate', 'on');
-  }
+
+    if (!agreed) document.documentElement.setAttribute('data-gate', 'on');
+  })();
 </script>
 </head>
 <body>
