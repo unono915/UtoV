@@ -93,13 +93,17 @@
         그 범위를 벗어나 배포하거나 공개하면 저작권 침해가 될 수 있습니다.
       </p>
 
-      <ul class="consent-checks">
-        <li><label><input type="checkbox" data-agree /><span>학교 수업 등 <b>교육 목적으로만</b> 사용하겠습니다.</span></label></li>
-        <li><label><input type="checkbox" data-agree /><span>내려받은 영상을 <b>다시 배포하거나 공개하지 않겠습니다.</b></span></label></li>
-        <li><label><input type="checkbox" data-agree /><span>저작권에 대한 <b>책임이 저에게 있음</b>을 이해했습니다.</span></label></li>
-      </ul>
+      <!-- 단추를 스크립트로 잠그지 않는다. 스크립트가 어긋나면 모두 체크해도
+           시작할 수 없는 상태에 갇힌다. 빠진 항목은 브라우저가 짚어 준다. -->
+      <form id="consentForm" autocomplete="off">
+        <ul class="consent-checks">
+          <li><label><input type="checkbox" name="c1" required data-agree /><span>학교 수업 등 <b>교육 목적으로만</b> 사용하겠습니다.</span></label></li>
+          <li><label><input type="checkbox" name="c2" required data-agree /><span>내려받은 영상을 <b>다시 배포하거나 공개하지 않겠습니다.</b></span></label></li>
+          <li><label><input type="checkbox" name="c3" required data-agree /><span>저작권에 대한 <b>책임이 저에게 있음</b>을 이해했습니다.</span></label></li>
+        </ul>
 
-      <button class="primary" id="consentGo" disabled>동의하고 시작하기</button>
+        <button class="primary" id="consentGo" type="submit">동의하고 시작하기</button>
+      </form>
     </div>
   </section>
 

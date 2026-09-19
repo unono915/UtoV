@@ -148,20 +148,12 @@ const CONSENT_VERSION = 1;
 function waitForConsent() {
   return new Promise((resolve) => {
     const boxes = [...$('consent').querySelectorAll('[data-agree]')];
-    const go = $('consentGo');
+    const form = $('consentForm');
+    for (const b of boxes) b.checked = false;
 
-    const sync = () => {
-      go.disabled = !boxes.every((b) => b.checked);
-    };
-    for (const b of boxes) {
-      b.checked = false;
-      b.onchange = sync;
-    }
-    sync();
-
-    go.onclick = async () => {
-      if (go.disabled) return;
-      go.disabled = true;
+    // 빠진 항목 검사는 브라우저에 맡기고, 통과했을 때 할 일만 여기서 한다
+    form.onsubmit = async (e) => {
+      e.preventDefault();
       state.settings = await window.utov.settings.set({ agreedVersion: CONSENT_VERSION });
       resolve();
     };

@@ -58,13 +58,21 @@
       </p>
     </div>
 
-    <ul class="gate-checks">
-      <li><label><input type="checkbox" data-agree /><span>학교 수업 등 <b>교육 목적으로만</b> 사용하겠습니다.</span></label></li>
-      <li><label><input type="checkbox" data-agree /><span>내려받은 영상을 <b>다시 배포하거나 공개하지 않겠습니다.</b></span></label></li>
-      <li><label><input type="checkbox" data-agree /><span>저작권에 대한 <b>책임이 저에게 있음</b>을 이해했습니다.</span></label></li>
-    </ul>
+    <!--
+      단추를 스크립트로 잠그지 않는다. 스크립트가 한 번이라도 어긋나면
+      모두 체크해도 들어갈 수 없는 상태에 갇히기 때문이다. 대신 브라우저가
+      기본으로 해 주는 required 검사에 맡긴다. 빠뜨린 항목이 있으면
+      브라우저가 그 자리를 짚어 준다.
+    -->
+    <form id="gateForm" autocomplete="off">
+      <ul class="gate-checks">
+        <li><label><input type="checkbox" name="a1" required data-agree /><span>학교 수업 등 <b>교육 목적으로만</b> 사용하겠습니다.</span></label></li>
+        <li><label><input type="checkbox" name="a2" required data-agree /><span>내려받은 영상을 <b>다시 배포하거나 공개하지 않겠습니다.</b></span></label></li>
+        <li><label><input type="checkbox" name="a3" required data-agree /><span>저작권에 대한 <b>책임이 저에게 있음</b>을 이해했습니다.</span></label></li>
+      </ul>
 
-    <button class="btn btn-solid btn-lg" id="gateGo" disabled>동의하고 들어가기</button>
+      <button class="btn btn-solid btn-lg" id="gateGo" type="submit">동의하고 들어가기</button>
+    </form>
     <p class="gate-note">동의하지 않으시면 이 페이지를 닫아 주세요.</p>
   </div>
 </div>
@@ -345,18 +353,14 @@
     el.hidden = false;
     const boxes = [...el.querySelectorAll('[data-agree]')];
     const go = document.getElementById('gateGo');
+    const form = document.getElementById('gateForm');
 
-    const sync = () => {
-      go.disabled = !boxes.every((b) => b.checked);
-    };
-    boxes.forEach((b) => b.addEventListener('change', sync));
-    sync();
-
-    go.addEventListener('click', () => {
-      if (go.disabled) return;
+    // 검사는 브라우저에 맡기고, 통과했을 때 할 일만 여기서 한다
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
       try {
         localStorage.setItem('utov-agreed-v1', 'yes');
-      } catch (e) {
+      } catch (err) {
         /* 저장이 막혀 있으면 다음에 다시 묻는다 */
       }
       root.removeAttribute('data-gate');

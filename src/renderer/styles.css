@@ -356,6 +356,12 @@ select {
 .consent-checks input { accent-color: var(--mark); width: 16px; height: 16px; margin: 1px 0 0; flex: none; }
 .consent-checks b { color: var(--ink); }
 
+/* 덜 체크했으면 흐리게 보이되 누르는 것은 막지 않는다. 브라우저가 빠진
+   항목을 짚어 주므로, 단추가 잠겨 아무것도 못 하는 상태가 생기지 않는다. */
+#consentForm { display: grid; gap: 4px; }
+#consentForm #consentGo { justify-self: start; margin-top: 14px; }
+#consentForm:has(input:invalid) #consentGo { opacity: 0.45; }
+
 .setup-bar { display: grid; gap: 8px; }
 .setup-status { font-size: var(--t-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .setup-error { font-size: var(--t-sm); color: var(--bad); background: var(--bad-wash); padding: 10px 13px; border-radius: 7px; }

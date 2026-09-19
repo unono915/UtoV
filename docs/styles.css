@@ -167,7 +167,9 @@ a { color: inherit; }
 .gate-checks b { font-weight: 660; }
 
 .gate #gateGo { margin-top: 22px; width: 100%; }
-.gate #gateGo:disabled { opacity: 0.4; cursor: not-allowed; }
+/* 아직 덜 체크했으면 흐리게 보여 준다. 다만 누르는 것 자체를 막지는 않는다.
+   :has() 를 모르는 브라우저에서는 또렷하게 보일 뿐 동작에는 지장이 없다. */
+#gateForm:has(input:invalid) #gateGo { opacity: 0.45; }
 
 .gate-note { margin-top: 12px; font-size: 13px; color: var(--ink-3); text-align: center; }
 
