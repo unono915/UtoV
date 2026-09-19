@@ -91,20 +91,40 @@ a { color: inherit; }
 
 /* ------------------------------------------------------- 이용 동의 */
 
-/* 동의 전에는 본문을 아예 보여 주지 않는다 */
-:root[data-gate='on'] body > *:not(.gate) { display: none !important; }
-:root[data-gate='on'] { overflow: hidden; }
-:root[data-gate='on'] body { overflow: hidden; }
+/* 게이트는 CSS 로만 여닫는다. 스크립트가 돌지 않아도 동의 절차가 작동한다.
+   data-gate 는 HTML 에 처음부터 박혀 있고, 이미 동의한 사람에게만 스크립트가
+   그것을 떼어 준다. 숨은 #gateDone 이 켜지면 게이트가 걷힌다. */
+.gate { display: none; }
+
+:root[data-gate='on']:not(:has(#gateDone:checked)) .gate {
+  display: grid;
+}
+:root[data-gate='on']:not(:has(#gateDone:checked)) body > *:not(.gate) {
+  display: none !important;
+}
+:root[data-gate='on']:not(:has(#gateDone:checked)),
+:root[data-gate='on']:not(:has(#gateDone:checked)) body {
+  overflow: hidden;
+}
 
 .gate {
   position: fixed;
   inset: 0;
   z-index: 200;
-  display: grid;
   place-items: center;
   padding: 24px;
   overflow-y: auto;
   background: var(--paper);
+}
+
+/* 단추가 켜는 스위치. 눈에 보이지 않지만 :checked 는 그대로 작동한다. */
+.gate-done {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  margin: 0;
 }
 
 .gate-card {
@@ -166,10 +186,17 @@ a { color: inherit; }
 }
 .gate-checks b { font-weight: 660; }
 
-.gate #gateGo { margin-top: 22px; width: 100%; }
-/* 아직 덜 체크했으면 흐리게 보여 준다. 다만 누르는 것 자체를 막지는 않는다.
-   :has() 를 모르는 브라우저에서는 또렷하게 보일 뿐 동작에는 지장이 없다. */
-#gateForm:has(input:invalid) #gateGo { opacity: 0.45; }
+.gate #gateGo {
+  margin-top: 22px;
+  width: 100%;
+  cursor: pointer;
+  user-select: none;
+}
+/* 세 항목이 다 켜지기 전에는 흐리게 보이고 눌리지도 않는다 */
+#gateForm:has(.gate-checks input:not(:checked)) #gateGo {
+  opacity: 0.45;
+  pointer-events: none;
+}
 
 .gate-note { margin-top: 12px; font-size: 13px; color: var(--ink-3); text-align: center; }
 
