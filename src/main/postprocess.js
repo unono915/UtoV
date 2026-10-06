@@ -11,9 +11,45 @@
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
 
 const { findExe } = require('./paths');
+
+/** 네트워크 입력 없이 완전히 받은 파일에서만 구간을 자른다. */
+function trimFile(source, output, job, onChild, onProgress) {
+  return new Promise((resolve, reject) => {
+    const start = Math.max(0, Number(job.trim.start) || 0);
+    const end = Number(job.trim.end);
+    const args = ['-nostdin', '-y', '-hide_banner', '-loglevel', 'error',
+      '-ss', String(start), '-i', source];
+    if (Number.isFinite(end) && end > start) args.push('-t', String(end - start));
+    if (job.mode === 'audio') {
+      args.push('-map', '0:a:0', '-vn', '-c:a', 'libmp3lame', '-q:a', '0');
+    } else {
+      args.push('-map', '0:v:0', '-map', '0:a:0?');
+      if (job.precise === false) args.push('-c', 'copy');
+      else args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac');
+      args.push('-movflags', '+faststart');
+    }
+    args.push('-progress', 'pipe:1', output);
+    const child = spawn(findExe('ffmpeg'), args, { windowsHide: true });
+    onChild(child);
+    let buffer = '';
+    let error = '';
+    child.stdout.on('data', chunk => {
+      buffer += chunk.toString();
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop();
+      for (const line of lines) {
+        const match = line.match(/^out_time_us=(\d+)/);
+        if (match) onProgress(Number(match[1]) / 1000000);
+      }
+    });
+    child.stderr.on('data', chunk => { error = (error + chunk.toString()).slice(-4000); });
+    child.once('error', reject);
+    child.once('close', code => code === 0 ? resolve(output) : reject(new Error(error.trim() || '영상 자르기가 중단되었습니다.')));
+  });
+}
 
 /* ------------------------------------------------------------- 자막 */
 
@@ -87,7 +123,7 @@ async function retimeSrt(srtPath, startSec, spanSec) {
 }
 
 /** 자막을 영상 안에 넣는다 (기존 자막 트랙은 버린다) */
-function muxSubtitle(videoPath, srtPath) {
+function muxSubtitle(videoPath, srtPath, onChild = () => {}) {
   return new Promise((resolve, reject) => {
     const ffmpeg = findExe('ffmpeg');
     if (!ffmpeg) return reject(new Error('ffmpeg 를 찾지 못했습니다'));
@@ -102,7 +138,7 @@ function muxSubtitle(videoPath, srtPath) {
       '-movflags', '+faststart',
       tmp,
     ];
-    execFile(ffmpeg, args, { windowsHide: true, maxBuffer: 1 << 24 }, (err, _o, stderr) => {
+    const child = execFile(ffmpeg, args, { windowsHide: true, maxBuffer: 1 << 24 }, (err, _o, stderr) => {
       if (err) {
         fs.rm(tmp, { force: true }, () => {});
         return reject(new Error((stderr || err.message).trim().split('\n').slice(-1)[0]));
@@ -115,6 +151,7 @@ function muxSubtitle(videoPath, srtPath) {
         reject(e);
       }
     });
+    onChild(child);
   });
 }
 
@@ -133,7 +170,7 @@ const CODEC_NAMES = {
 };
 const niceName = (c) => CODEC_NAMES[String(c).toLowerCase()] || c;
 
-function probeFile(filePath) {
+function probeFile(filePath, onChild) {
   return new Promise((resolve, reject) => {
     const ffprobe = findExe('ffprobe');
     if (!ffprobe) return reject(new Error('ffprobe 를 찾지 못했습니다'));
@@ -142,7 +179,7 @@ function probeFile(filePath) {
       '-show_entries', 'format=duration,format_name:stream=index,codec_type,codec_name,duration',
       '-of', 'json', filePath,
     ];
-    execFile(ffprobe, args, { windowsHide: true, timeout: 60000, maxBuffer: 1 << 24 },
+    const child = execFile(ffprobe, args, { windowsHide: true, timeout: 60000, maxBuffer: 1 << 24 },
       (err, stdout, stderr) => {
         if (err) return reject(new Error((stderr || err.message).trim().split('\n').slice(-1)[0]));
         try {
@@ -151,6 +188,7 @@ function probeFile(filePath) {
           reject(new Error('파일 정보를 읽지 못했습니다'));
         }
       });
+    onChild(child);
   });
 }
 
@@ -160,7 +198,7 @@ function probeFile(filePath) {
  * @param {{mode:string, expectSeconds:number|null}} expect
  * @returns {Promise<{ok:boolean, fatal:string|null, warnings:string[], duration:number, codecs:object}>}
  */
-async function verify(filePath, expect = {}) {
+async function verify(filePath, expect = {}, onChild = () => {}) {
   const warnings = [];
 
   let stat;
@@ -175,7 +213,7 @@ async function verify(filePath, expect = {}) {
 
   let info;
   try {
-    info = await probeFile(filePath);
+    info = await probeFile(filePath, onChild);
   } catch (err) {
     return {
       ok: false,
@@ -260,4 +298,4 @@ async function findSubtitleNextTo(videoPath) {
   return hit ? path.join(dir, hit) : null;
 }
 
-module.exports = { retimeSrt, muxSubtitle, verify, findSubtitleNextTo };
+module.exports = { retimeSrt, muxSubtitle, verify, findSubtitleNextTo, trimFile };

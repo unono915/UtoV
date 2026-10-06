@@ -44,6 +44,7 @@ function commonArgs(settings = {}, { safeMode = false, client = null } = {}) {
   const args = [
     '--ignore-config', '--no-playlist', '--no-colors', '--no-warnings',
     '--extractor-retries', '3',
+    '--socket-timeout', '20',
     '--retry-sleep', 'extractor:exp=2:60',
   ];
   const ff = ffmpegDir();
@@ -345,17 +346,8 @@ function buildArgs(job, settings, resultFile) {
     args.push('--merge-output-format', 'mp4');
   }
 
-  // 구간 지정 — 영상 전체가 아니라 필요한 부분만 내려받는다
-  if (trimming) {
-    const start = Math.max(0, Number(job.trim.start) || 0);
-    const end = Number(job.trim.end);
-    const range =
-      Number.isFinite(end) && end > start
-        ? '*' + start.toFixed(2) + '-' + end.toFixed(2)
-        : '*' + start.toFixed(2) + '-inf';
-    args.push('--download-sections', range);
-    if (job.precise !== false) args.push('--force-keyframes-at-cuts');
-  }
+  // --download-sections 는 네트워크 다운로드까지 ffmpeg 에 넘겨 중간에
+  // 멈출 수 있다. yt-dlp 로 원본을 받은 뒤 finishUp 에서 로컬 파일을 자른다.
 
   // 자막 (영상일 때만 의미가 있다)
   //
@@ -410,17 +402,26 @@ const PP_LABELS = {
  * @returns {string} jobId
  */
 function start(job, settings, onEvent) {
+  const trimming = Boolean(job.trim && job.trim.enabled);
+  const outputKey = JSON.stringify([job.url, path.resolve(job.outDir).toLowerCase(), job.mode,
+    trimming ? [stamp(job.trim.start), stamp(job.trim.end)] : null]);
+  if ([...jobs.values()].some(state => state.outputKey === outputKey)) {
+    throw new Error('같은 영상과 구간의 다운로드가 이미 진행 중입니다. 기존 작업을 완료하거나 취소해 주세요.');
+  }
   const jobId = randomUUID();
   const resultFile = path.join(os.tmpdir(), 'utov-' + jobId + '.txt');
   const startedAt = Date.now();
 
   fs.mkdirSync(job.outDir, { recursive: true });
 
-  const args = buildArgs(job, settings, resultFile);
+  // 작업마다 별도 폴더를 써서 원본과 미완성 파일이 사용자 결과물과 섞이지 않는다.
+  const workDir = trimming ? fs.mkdtempSync(path.join(job.outDir, '.utov-')) : null;
+  const args = buildArgs(workDir ? { ...job, outDir: workDir } : job, settings, resultFile);
   const child = spawn(ytdlpPath(), args, { windowsHide: true });
 
   const state = {
     child,
+    outputKey,
     canceled: false,
     lastFile: null,
     alreadyHave: null,
@@ -429,7 +430,22 @@ function start(job, settings, onEvent) {
   };
   jobs.set(jobId, state);
 
-  const emit = (e) => onEvent(Object.assign({ jobId }, e));
+  const trackChild = child => {
+    state.child = child;
+    child.once('close', () => { if (state.child === child) state.child = null; });
+    if (state.canceled) killTree(child);
+  };
+
+  let settled = false;
+  const emit = (e) => {
+    if (settled) return;
+    if (['done', 'error', 'canceled'].includes(e.type)) {
+      settled = true;
+      jobs.delete(jobId);
+      if (workDir) fs.rm(workDir, { recursive: true, force: true }, () => {});
+    }
+    onEvent(Object.assign({ jobId }, e));
+  };
   emit({ type: 'started' });
 
   const handleLine = (line) => {
@@ -533,15 +549,30 @@ function start(job, settings, onEvent) {
     const span = trimming ? Number(job.trim.end) - Number(job.trim.start) : null;
     let file = filePath;
 
+    if (trimming) {
+      emit({ type: 'phase', label: '내려받기 완료 · 구간 자르는 중' });
+      const cutDir = path.join(workDir, 'cut');
+      fs.mkdirSync(cutDir);
+      const cutFile = path.join(cutDir, path.basename(file));
+      await postprocess.trimFile(file, cutFile, job,
+        trackChild,
+        seconds => emit({ type: 'cutting', seconds }));
+      if (state.canceled) return emit({ type: 'canceled' });
+      const srt = await postprocess.findSubtitleNextTo(file);
+      if (srt) fs.copyFileSync(srt, path.join(cutDir, path.basename(srt)));
+      file = cutFile;
+    }
+
     if (trimming && job.mode !== 'audio' && job.subs && job.subs !== 'none') {
       try {
         const srt = await postprocess.findSubtitleNextTo(file);
         if (srt) {
           emit({ type: 'phase', label: '자막 시각 맞추는 중' });
           await postprocess.retimeSrt(srt, Number(job.trim.start), span);
+          if (state.canceled) return emit({ type: 'canceled' });
           if (job.subs === 'embed') {
             emit({ type: 'phase', label: '자막 넣는 중' });
-            await postprocess.muxSubtitle(file, srt);
+            await postprocess.muxSubtitle(file, srt, trackChild);
             fs.rm(srt, { force: true }, () => {});
           }
         }
@@ -551,8 +582,11 @@ function start(job, settings, onEvent) {
       }
     }
 
+    if (state.canceled) return emit({ type: 'canceled' });
+
     emit({ type: 'phase', label: '파일 확인 중' });
-    const check = await postprocess.verify(file, { mode: job.mode, expectSeconds: span });
+    const check = await postprocess.verify(file, { mode: job.mode, expectSeconds: span }, trackChild);
+    if (state.canceled) return emit({ type: 'canceled' });
 
     if (!check.ok) {
       return emit({
@@ -561,6 +595,26 @@ function start(job, settings, onEvent) {
         code: 'broken-file',
         raw: friendlyError(state.stderr).raw,
       });
+    }
+
+    if (workDir) {
+      const srt = await postprocess.findSubtitleNextTo(file);
+      if (state.canceled) return emit({ type: 'canceled' });
+      // 기존 결과는 덮어쓰지 않는다. COPYFILE_EXCL 로 동시 완료도 안전하게 처리.
+      const ext = path.extname(file);
+      const base = path.basename(file, ext);
+      let destination;
+      for (let n = 0; ; n++) {
+        destination = path.join(job.outDir, base + (n ? ` (${n})` : '') + ext);
+        try { fs.copyFileSync(file, destination, fs.constants.COPYFILE_EXCL); break; }
+        catch (err) { if (err.code !== 'EEXIST') throw err; }
+      }
+      if (srt) {
+        try {
+          fs.copyFileSync(srt, destination.slice(0, -ext.length) + '.srt', fs.constants.COPYFILE_EXCL);
+        } catch (err) { check.warnings.push(`자막 저장 실패: ${err.message}`); }
+      }
+      file = destination;
     }
 
     let size = sizeHint;
@@ -581,7 +635,7 @@ function start(job, settings, onEvent) {
   }
 
   child.on('close', (code) => {
-    jobs.delete(jobId);
+    state.child = null;
     if (outBuf.trim()) handleLine(outBuf.trim());
 
     let finalPath = null;
@@ -618,7 +672,9 @@ function start(job, settings, onEvent) {
     if (code === 0) {
       // 파일이 생겼다고 끝난 것이 아니다. 자막 시각을 맞추고, 실제로
       // 열리는 파일인지 확인한 뒤에야 성공이라고 말한다.
-      finishUp(finalPath, size);
+      finishUp(finalPath, size).catch(err => emit(state.canceled
+        ? { type: 'canceled' }
+        : { type: 'error', message: err.message, code: 'postprocess' }));
     } else {
       const failure = friendlyError(state.stderr);
       emit({

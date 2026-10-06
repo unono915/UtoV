@@ -632,7 +632,7 @@ function paintGoNote() {
   if (state.mode === 'audio') {
     note.append(whole ? '전체를 MP3 로 저장합니다.' : '선택한 구간을 MP3 로 저장합니다: ');
   } else {
-    note.append(whole ? '전체를 MP4 로 저장합니다.' : '선택한 구간만 내려받습니다: ');
+    note.append(whole ? '전체를 MP4 로 저장합니다.' : '원본을 받은 뒤 선택한 구간만 저장합니다: ');
   }
   if (!whole) {
     const b = document.createElement('b');
