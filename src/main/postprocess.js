@@ -15,14 +15,23 @@ const { execFile, spawn } = require('node:child_process');
 
 const { findExe } = require('./paths');
 
-/** 네트워크 입력 없이 완전히 받은 파일에서만 구간을 자른다. */
+/** 초를 ffmpeg 에 넘길 밀리초 단위 문자열로. 2.345 - 1 이 1.3450000000000002 가 되는 것을 막는다. */
+const secondsArg = (sec) => (Math.round(sec * 1000) / 1000).toFixed(3);
+
+/**
+ * 네트워크 입력 없이 완전히 받은 파일에서만 구간을 자른다.
+ *
+ * 시각은 밀리초까지 받는다. 정밀 모드(다시 인코딩)에서 -i 앞의 -ss 는
+ * 지정한 시각 이후의 첫 프레임부터 정확히 자른다. 빠른 모드(-c copy)는
+ * 키프레임에서만 자를 수 있어 밀리초 지정이 의미가 없다.
+ */
 function trimFile(source, output, job, onChild, onProgress) {
   return new Promise((resolve, reject) => {
     const start = Math.max(0, Number(job.trim.start) || 0);
     const end = Number(job.trim.end);
     const args = ['-nostdin', '-y', '-hide_banner', '-loglevel', 'error',
-      '-ss', String(start), '-i', source];
-    if (Number.isFinite(end) && end > start) args.push('-t', String(end - start));
+      '-ss', secondsArg(start), '-i', source];
+    if (Number.isFinite(end) && end > start) args.push('-t', secondsArg(end - start));
     if (job.mode === 'audio') {
       args.push('-map', '0:a:0', '-vn', '-c:a', 'libmp3lame', '-q:a', '0');
     } else {
@@ -298,4 +307,4 @@ async function findSubtitleNextTo(videoPath) {
   return hit ? path.join(dir, hit) : null;
 }
 
-module.exports = { retimeSrt, muxSubtitle, verify, findSubtitleNextTo, trimFile };
+module.exports = { retimeSrt, muxSubtitle, verify, findSubtitleNextTo, trimFile, secondsArg };

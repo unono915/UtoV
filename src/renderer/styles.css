@@ -625,9 +625,22 @@ select {
 }
 .time-pair { display: flex; align-items: flex-end; gap: 10px; }
 .time-field { display: grid; gap: 5px; }
-.time-field > span { font-size: var(--t-xs); font-weight: 640; letter-spacing: 0.055em; color: var(--ink-3); }
+.time-field > label { font-size: var(--t-xs); font-weight: 640; letter-spacing: 0.055em; color: var(--ink-3); }
+.time-box { display: flex; align-items: stretch; gap: 4px; }
+.nudge {
+  min-width: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--rule-2);
+  border-radius: 7px;
+  color: var(--ink-2);
+  font-size: var(--t-md);
+  line-height: 1;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.nudge:hover { border-color: var(--ink-3); color: var(--ink); background: var(--paper-2); }
+.nudge:focus-visible { outline: 2px solid var(--mark); outline-offset: 1px; }
 .time-input {
-  width: 11ch;
+  width: 14ch;
   font-family: var(--mono);
   font-size: var(--t-md);
   font-variant-numeric: tabular-nums;

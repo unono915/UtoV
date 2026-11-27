@@ -25,17 +25,8 @@ function humanDur(sec) {
   return `${ss}초`;
 }
 
-/** "1:23", "01:02:03", "90", "1:23.5" → 초. 못 읽으면 null */
-function parseTime(text) {
-  const raw = String(text ?? '').trim().replace(/\s/g, '');
-  if (!raw) return null;
-  if (!/^\d{1,2}(:\d{1,2}){0,2}(\.\d+)?$/.test(raw)) return null;
-  const parts = raw.split(':').map(Number);
-  if (parts.some((n) => Number.isNaN(n))) return null;
-  let sec = 0;
-  for (const p of parts) sec = sec * 60 + p;
-  return sec;
-}
+/* 구간 시각(밀리초 단위)은 timecode.js 에서 가져온다 */
+const { hmsMs, parseTime, roundMs, stepFrame, previewTime, fpsFor } = window.UtovTime;
 
 function bytes(n) {
   if (n == null || !Number.isFinite(n)) return '';
@@ -209,6 +200,7 @@ $('concurrency').onchange = async (e) => {
 };
 
 $('precise').onchange = async (e) => {
+  paintGoNote();
   state.settings = await window.utov.settings.set({ precise: e.target.checked });
 };
 
@@ -384,6 +376,9 @@ function clampRange() {
   state.start = Math.min(Math.max(0, state.start), Math.max(0, dur - MIN));
   state.end = Math.max(Math.min(dur, state.end), state.start + MIN);
   if (state.end > dur) state.end = dur;
+  // 손잡이를 끌거나 재생 위치를 찍으면 소수점이 길게 붙는다. 밀리초로 맞춘다.
+  state.start = roundMs(state.start);
+  state.end = roundMs(state.end);
 }
 
 function paintRange({ skipInputs } = {}) {
@@ -403,16 +398,16 @@ function paintRange({ skipInputs } = {}) {
   $('segLength').textContent = whole ? `전체 ${humanDur(dur)}` : `${humanDur(span)} 선택`;
 
   if (!skipInputs) {
-    $('tStart').value = hms(state.start);
-    $('tEnd').value = hms(state.end);
+    $('tStart').value = hmsMs(state.start);
+    $('tEnd').value = hmsMs(state.end);
   }
 
   $('hStart').setAttribute('aria-valuemax', String(Math.round(dur)));
   $('hStart').setAttribute('aria-valuenow', String(Math.round(state.start)));
-  $('hStart').setAttribute('aria-valuetext', hms(state.start));
+  $('hStart').setAttribute('aria-valuetext', hmsMs(state.start));
   $('hEnd').setAttribute('aria-valuemax', String(Math.round(dur)));
   $('hEnd').setAttribute('aria-valuenow', String(Math.round(state.end)));
-  $('hEnd').setAttribute('aria-valuetext', hms(state.end));
+  $('hEnd').setAttribute('aria-valuetext', hmsMs(state.end));
 
   paintGoNote();
 }
@@ -497,6 +492,8 @@ function bindHandle(el, which) {
     const step = e.shiftKey ? 10 : e.ctrlKey ? 0.1 : 1;
     let handled = true;
     const move = (delta) => {
+      // Alt 를 누르고 있으면 한 프레임씩
+      if (e.altKey) return nudge(which, Math.sign(delta), { seek: false });
       if (which === 'start') state.start += delta;
       else state.end += delta;
     };
@@ -531,7 +528,7 @@ function bindTimeInput(input, which) {
   const commit = () => {
     const sec = parseTime(input.value);
     if (sec == null) {
-      input.value = hms(which === 'start' ? state.start : state.end);
+      input.value = hmsMs(which === 'start' ? state.start : state.end);
       return;
     }
     if (which === 'start') state.start = sec;
@@ -544,8 +541,72 @@ function bindTimeInput(input, which) {
     if (e.key === 'Enter') {
       commit();
       input.blur();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      // ↑↓ 한 프레임, Shift 를 누르면 1초
+      e.preventDefault();
+      commit();
+      const dir = e.key === 'ArrowUp' ? 1 : -1;
+      if (e.shiftKey) {
+        if (which === 'start') state.start += dir;
+        else state.end += dir;
+        clampRange();
+        paintRange();
+        seekPreview(which);
+      } else {
+        nudge(which, dir);
+      }
+      input.select();
     }
   });
+}
+
+/* 한 프레임씩 옮기기 */
+
+/** 지금 고른 화질에서 받게 될 영상의 초당 프레임 수 */
+function frameRate() {
+  return fpsFor(state.info, $('quality').value);
+}
+
+/** 미리보기에서 그 경계가 실제로 자르는 장면을 찾아갈 시각 */
+function previewAt(which) {
+  const t = which === 'start' ? state.start : state.end;
+  // 소리만 받을 때는 프레임 규칙이 없으니 그 시각 그대로
+  return state.mode === 'audio' ? t : previewTime(t, frameRate(), which);
+}
+
+/** 미리보기를 그 경계에 멈춰 세워서 어느 장면에서 잘리는지 보이게 한다 */
+function seekPreview(which) {
+  if (!state.playerReady) return;
+  try {
+    state.player.pauseVideo();
+    state.player.seekTo(previewAt(which), true);
+    state.previewUntil = null;
+  } catch { /* 플레이어 준비 전이면 무시 */ }
+}
+
+function nudge(which, dir, { seek = true } = {}) {
+  if (!state.info) return;
+  // 소리만 받을 때는 프레임이 없으니 0.01초씩
+  const step = (t) => (state.mode === 'audio' ? roundMs(t + dir * 0.01) : stepFrame(t, frameRate(), dir));
+  if (which === 'start') state.start = step(state.start);
+  else state.end = step(state.end);
+  clampRange();
+  paintRange();
+  if (seek) seekPreview(which);
+}
+
+function paintNudgeTitles() {
+  const unit = state.mode === 'audio' ? '0.01초' : `한 프레임(1/${frameRate()}초)`;
+  for (const btn of document.querySelectorAll('.nudge')) {
+    const what = btn.dataset.which === 'start' ? '시작' : '끝';
+    const way = Number(btn.dataset.dir) > 0 ? '뒤로' : '앞으로';
+    btn.title = `${what}을 ${unit} ${way}`;
+    btn.setAttribute('aria-label', btn.title);
+  }
+}
+
+for (const btn of document.querySelectorAll('.nudge')) {
+  btn.onclick = () => nudge(btn.dataset.which, Number(btn.dataset.dir));
 }
 bindTimeInput($('tStart'), 'start');
 bindTimeInput($('tEnd'), 'end');
@@ -575,7 +636,8 @@ $('markEnd').onclick = () => {
 $('playSeg').onclick = () => {
   if (!state.playerReady) return setStatus('미리보기가 준비되면 쓸 수 있습니다');
   try {
-    state.player.seekTo(state.start, true);
+    // 저장될 첫 프레임부터 재생한다
+    state.player.seekTo(previewAt('start'), true);
     state.player.playVideo();
     state.previewUntil = state.end;
   } catch { /* 무시 */ }
@@ -593,11 +655,13 @@ for (const btn of document.querySelectorAll('.segmented button')) {
     $('rowQuality').hidden = isAudio;
     $('rowSubs').hidden = isAudio;
     paintGoNote();
+    paintNudgeTitles();
     state.settings = await window.utov.settings.set({ mode: state.mode });
   };
 }
 
 $('quality').onchange = async (e) => {
+  paintNudgeTitles();
   state.settings = await window.utov.settings.set({ height: e.target.value });
 };
 
@@ -636,8 +700,12 @@ function paintGoNote() {
   }
   if (!whole) {
     const b = document.createElement('b');
-    b.textContent = `${hms(state.start)} – ${hms(state.end)}`;
+    b.textContent = `${hmsMs(state.start)} – ${hmsMs(state.end)}`;
     note.append(b, ` (${humanDur(state.end - state.start)})`);
+    // 빠른 자르기(스트림 복사)는 키프레임에서만 자를 수 있다
+    if (state.mode !== 'audio' && !$('precise').checked) {
+      note.append(' 정확히 맞추기를 꺼 두어 시작이 몇 초 앞당겨질 수 있습니다.');
+    }
   }
 }
 
@@ -709,6 +777,7 @@ async function loadVideo() {
   setTrackArt(res.info.thumbnail);
 
   paintQualityOptions(res.info.heights);
+  paintNudgeTitles();
   paintChapters(res.info.chapters);
   drawTicks();
   paintRange();
@@ -818,7 +887,7 @@ function addQueueItem(jobId, meta) {
   };
 
   const range =
-    (meta.whole ? '전체' : `${hms(meta.start)} – ${hms(meta.end)}`) +
+    (meta.whole ? '전체' : `${hmsMs(meta.start)} – ${hmsMs(meta.end)}`) +
     (meta.attempt ? ` · ${meta.stratLabel || '다른 방법'}` : '');
   el.title.textContent = meta.title;
   el.title.title = meta.title;

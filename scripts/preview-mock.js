@@ -28,6 +28,8 @@ if (!window.utov) {
           webpageUrl: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
           uploadDate: '20141110', isLive: false,
           heights: [2160, 1440, 1080, 720, 480, 360],
+          fpsByHeight: { 2160: 60, 1440: 60, 1080: 60, 720: 60, 480: 30, 360: 30 },
+          fpsBest: 60,
           hasSubtitles: true, hasAutoSubtitles: true,
           chapters: [
             { title: '오프닝', start: 0, end: 90 },

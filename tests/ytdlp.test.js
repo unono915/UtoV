@@ -42,6 +42,54 @@ test('trim jobs download through the native downloader before local cutting', ()
   assert.ok(Number(args[args.indexOf('--socket-timeout') + 1]) > 0);
 });
 
+test('file name stamps keep milliseconds only when there are some', () => {
+  const { api } = load();
+  assert.equal(api.stamp(83), '00-01-23');
+  assert.equal(api.stamp(83.456), '00-01-23.456');
+  assert.equal(api.stamp(83.5), '00-01-23.500');
+  assert.equal(api.stamp(3599.9996), '01-00-00');
+  const args = api.buildArgs({ ...job, trim: { enabled: true, start: 1.25, end: 2.5 } }, {}, 'result.txt');
+  assert.match(args[args.indexOf('-o') + 1], /\[00-00-01\.250~00-00-02\.500\]\.%\(ext\)s$/);
+});
+
+test('sub-second ranges are separate jobs, not duplicates', () => {
+  const { api } = load();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'utov-ms-'));
+  try {
+    const a = api.start({ ...job, outDir: dir, trim: { enabled: true, start: 1.2, end: 3 } }, {}, () => {});
+    const b = api.start({ ...job, outDir: dir, trim: { enabled: true, start: 1.7, end: 3 } }, {}, () => {});
+    assert.notEqual(a, b);
+    api.cancelAll();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('video info reports frame rate per height', () => {
+  const { api } = load();
+  const info = api.shapeInfo({
+    id: 'x', duration: 10,
+    formats: [
+      { height: 1080, fps: 60, vcodec: 'avc1' },
+      { height: 1080, fps: 30, vcodec: 'vp9' },
+      { height: 360, fps: 30, vcodec: 'avc1' },
+      { height: null, fps: null, vcodec: 'none', acodec: 'mp4a' },
+    ],
+  });
+  assert.deepEqual({ ...info.fpsByHeight }, { 1080: 60, 360: 30 });
+  assert.equal(info.fpsBest, 60);
+  // 세로 영상(쇼츠)은 가장 큰 H.264 가 1920 높이
+  const short = api.shapeInfo({
+    id: 'y', duration: 10,
+    formats: [
+      { height: 1920, fps: 60, vcodec: 'avc1.640032' },
+      { height: 854, fps: 30, vcodec: 'avc1.4d401f' },
+      { height: 2560, fps: 60, vcodec: 'vp09' },
+    ],
+  });
+  assert.equal(short.fpsBest, 60);
+});
+
 test('full downloads do not receive FFmpeg HTTP-only options', () => {
   const { api } = load();
   assert.equal(api.buildArgs({ ...job, trim: { enabled: false } }, {}, 'result.txt').includes('--downloader-args'), false);
@@ -50,7 +98,10 @@ test('full downloads do not receive FFmpeg HTTP-only options', () => {
 test('a second job targeting the same output is rejected until the first exits', () => {
   const { api, children } = load();
   api.start(job, {}, () => {});
-  assert.throws(() => api.start({ ...job, height: '720', trim: { ...job.trim, start: 521.8 } }, {}, () => {}), /진행 중/);
+  // 화질만 달라도 같은 이름의 파일이 생기므로 막는다
+  assert.throws(() => api.start({ ...job, height: '720', trim: { ...job.trim } }, {}, () => {}), /진행 중/);
+  // 1ms 미만 차이는 같은 파일이름이 되므로 역시 막는다
+  assert.throws(() => api.start({ ...job, trim: { ...job.trim, start: 521.2901 } }, {}, () => {}), /진행 중/);
   children[0].emit('close', 1);
   assert.doesNotThrow(() => api.start(job, {}, () => {}));
   children.at(-1).emit('close', 1);
@@ -80,7 +131,7 @@ test('duplicate protection and cancellation remain active during local cutting',
 test('completed clips preserve existing outputs and publish their sidecar subtitles', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'utov-publish-test-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const name = 'fixture [00-08-41~00-15-45]';
+  const name = 'fixture [00-08-41.290~00-15-45]';
   fs.writeFileSync(path.join(dir, name + '.mp4'), 'existing clip');
   const { api, children } = load({
     async trimFile(source, target) { fs.copyFileSync(source, target); },

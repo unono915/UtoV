@@ -25,13 +25,19 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** 초 → 파일명에 쓸 수 있는 00-01-30 형태 */
+/**
+ * 초 → 파일명에 쓸 수 있는 00-01-30 형태.
+ * 밀리초가 있으면 00-01-30.250 처럼 붙여서, 0.5초만 다른 구간끼리도
+ * 이름이 겹치지 않게 한다. 정수 초면 예전과 같은 이름이 나온다.
+ */
 function stamp(sec) {
-  const s = Math.max(0, Math.floor(sec || 0));
+  const total = Math.max(0, Math.round((Number(sec) || 0) * 1000));
+  const s = Math.floor(total / 1000);
+  const ms = total % 1000;
   const h = String(Math.floor(s / 3600)).padStart(2, '0');
   const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
   const ss = String(s % 60).padStart(2, '0');
-  return h + '-' + m + '-' + ss;
+  return h + '-' + m + '-' + ss + (ms ? '.' + String(ms).padStart(3, '0') : '');
 }
 
 /**
@@ -237,6 +243,24 @@ function shapeInfo(info) {
       .map((f) => f.height)
   )].sort((a, b) => b - a);
 
+  // 화질별 초당 프레임 수. 구간을 한 프레임씩 옮길 때 쓴다.
+  // 같은 영상이라도 1080p 는 60fps, 360p 는 30fps 처럼 다를 수 있다.
+  const fpsByHeight = {};
+  let fpsBest = null;
+  let bestHeight = 0;
+  for (const f of formats) {
+    const fps = Number(f.fps);
+    if (!f.height || !(fps > 0) || !f.vcodec || f.vcodec === 'none') continue;
+    fpsByHeight[f.height] = Math.max(fpsByHeight[f.height] || 0, fps);
+    // '가장 좋은 화질'은 상한 없이 가장 큰 H.264 를 받는다 (formatSelector).
+    // 세로 영상(쇼츠)은 높이가 1920 이라 높이 상한으로 셈하면 틀린다.
+    if (/^avc1/i.test(f.vcodec) && (f.height > bestHeight || (f.height === bestHeight && fps > fpsBest))) {
+      bestHeight = f.height;
+      fpsBest = fps;
+    }
+  }
+  if (fpsBest == null) fpsBest = Math.max(0, ...Object.values(fpsByHeight)) || null;
+
   const thumb =
     info.thumbnail ||
     (Array.isArray(info.thumbnails) && info.thumbnails.length
@@ -254,6 +278,8 @@ function shapeInfo(info) {
     uploadDate: info.upload_date || null,
     isLive: Boolean(info.is_live),
     heights,
+    fpsByHeight,
+    fpsBest,
     hasSubtitles: Object.keys(info.subtitles || {}).length > 0,
     hasAutoSubtitles: Object.keys(info.automatic_captions || {}).length > 0,
     // 실제로 있는 자막 언어. 이 중 하나만 골라 받는다.
@@ -704,5 +730,5 @@ function cancelAll() {
 }
 
 module.exports = {
-  probe, start, cancel, cancelAll, friendlyError, stamp, buildArgs, STRATEGIES,
+  probe, start, cancel, cancelAll, friendlyError, stamp, buildArgs, shapeInfo, STRATEGIES,
 };
