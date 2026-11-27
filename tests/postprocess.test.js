@@ -44,6 +44,21 @@ test('local precise cut produces the requested duration with video and audio', a
     const result = await api.verify(ms, { mode: 'video', expectSeconds: 1.266 });
     assert.ok(Math.abs(result.duration - 1.266) < 0.05, `길이 ${result.duration}`);
   });
+  await t.test('the clip ends just before the end time even when the start is between frames', async () => {
+    // 25fps. 시작 1.234 → 31번(1.24)부터, 끝 2.48 은 62번 프레임과 딱 맞으므로 62번은 빠진다.
+    // 예전처럼 -t 를 (끝-시작)으로 주면 첫 프레임부터 세어 62번까지 들어갔다 (32장).
+    const out = path.join(dir, 'end-on-frame.mp4');
+    await api.trimFile(source, out, { mode: 'video', precise: true, trim: { start: 1.234, end: 2.48 } }, () => {}, () => {});
+    const frames = Number(execFileSync(exe('ffprobe'), ['-v', 'error', '-select_streams', 'v:0', '-count_packets',
+      '-show_entries', 'stream=nb_read_packets', '-of', 'csv=p=0', out], { encoding: 'utf8' }).trim());
+    assert.equal(frames, 31);
+  });
+  await t.test('cut window measures the length from the first kept frame', () => {
+    assert.deepEqual({ ...api.cutWindow(1.234, 2.48, 1.24) }, { ss: '1.239900', t: '1.239999' });
+    // 첫 프레임을 모르면 예전 방식
+    assert.deepEqual({ ...api.cutWindow(1.234, 2.48, null) }, { ss: '1.234', t: '1.246' });
+    assert.deepEqual({ ...api.cutWindow(1.234, NaN, 1.24) }, { ss: '1.234', t: null });
+  });
   await t.test('ffmpeg receives clean millisecond values', () => {
     assert.equal(api.secondsArg(2.345 - 1), '1.345');
     assert.equal(api.secondsArg(83.46999999), '83.470');

@@ -18,20 +18,73 @@ const { findExe } = require('./paths');
 /** 초를 ffmpeg 에 넘길 밀리초 단위 문자열로. 2.345 - 1 이 1.3450000000000002 가 되는 것을 막는다. */
 const secondsArg = (sec) => (Math.round(sec * 1000) / 1000).toFixed(3);
 
+/** 프레임 시각처럼 밀리초로 떨어지지 않는 값은 마이크로초까지 넘긴다 */
+const microsArg = (sec) => (Math.round(sec * 1e6) / 1e6).toFixed(6);
+
+/**
+ * 시작 시각 이후 첫 영상 프레임의 시각. 패킷 머리만 읽어서 빠르다 (디코딩하지 않음).
+ * 찾지 못하면 null. 취소로 끊기면 거부한다.
+ */
+function firstFrameAt(source, start, onChild) {
+  return new Promise((resolve, reject) => {
+    const ffprobe = findExe('ffprobe');
+    if (!ffprobe) return resolve(null);
+    const args = ['-v', 'error', '-select_streams', 'v:0',
+      // 끝은 절대 시각으로 준다. '%+1' 은 거슬러 올라간 키프레임에서부터 세어서
+      // 키프레임이 멀면 시작 시각에 닿기 전에 멈춘다.
+      '-read_intervals', `${secondsArg(start)}%${secondsArg(start + 1.5)}`,
+      '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', source];
+    const child = execFile(ffprobe, args, { windowsHide: true, timeout: 30000, maxBuffer: 1 << 24 },
+      (err, stdout) => {
+        if (child.killed && err) return reject(new Error('영상 자르기가 중단되었습니다.'));
+        if (err) return resolve(null);
+        const after = String(stdout).split(/\r?\n/).map(Number)
+          .filter((t) => Number.isFinite(t) && t >= start - 1e-9);
+        resolve(after.length ? Math.min(...after) : null);
+      });
+    onChild(child);
+  });
+}
+
+/**
+ * 정밀 모드의 -ss 와 -t 를 정한다.
+ *
+ * -i 앞의 -ss 는 지정한 시각 이후의 첫 프레임부터 자르지만, -t 는 그 첫
+ * 프레임부터 센다. 시작이 프레임 사이에 있으면 끝이 그 차이만큼(최대 한
+ * 프레임) 늦어지고, 끝이 프레임과 딱 맞으면 그 프레임까지 들어간다. 그래서
+ * 첫 프레임의 실제 시각을 알아낸 뒤 거기서부터 끝까지의 길이를 넘긴다.
+ * 소리도 같은 지점에서 시작하도록 -ss 를 첫 프레임 바로 앞(0.1ms)으로 옮긴다.
+ *
+ * @returns {{ss:string, t:string|null}}
+ */
+function cutWindow(start, end, firstFrame) {
+  const hasEnd = Number.isFinite(end) && end > start;
+  if (firstFrame != null && hasEnd && end - firstFrame > 0.001) {
+    return {
+      ss: microsArg(Math.max(0, firstFrame - 0.0001)),
+      t: microsArg(end - firstFrame - 0.000001),
+    };
+  }
+  return { ss: secondsArg(start), t: hasEnd ? secondsArg(end - start) : null };
+}
+
 /**
  * 네트워크 입력 없이 완전히 받은 파일에서만 구간을 자른다.
  *
- * 시각은 밀리초까지 받는다. 정밀 모드(다시 인코딩)에서 -i 앞의 -ss 는
- * 지정한 시각 이후의 첫 프레임부터 정확히 자른다. 빠른 모드(-c copy)는
+ * 시각은 밀리초까지 받는다. 정밀 모드(다시 인코딩)는 지정한 시작 이후의 첫
+ * 프레임부터 지정한 끝 직전의 프레임까지 정확히 자른다. 빠른 모드(-c copy)는
  * 키프레임에서만 자를 수 있어 밀리초 지정이 의미가 없다.
  */
-function trimFile(source, output, job, onChild, onProgress) {
+async function trimFile(source, output, job, onChild, onProgress) {
+  const start = Math.max(0, Number(job.trim.start) || 0);
+  const end = Number(job.trim.end);
+  const exactVideo = job.mode !== 'audio' && job.precise !== false;
+  const firstFrame = exactVideo ? await firstFrameAt(source, start, onChild) : null;
+  const win = cutWindow(start, end, firstFrame);
   return new Promise((resolve, reject) => {
-    const start = Math.max(0, Number(job.trim.start) || 0);
-    const end = Number(job.trim.end);
     const args = ['-nostdin', '-y', '-hide_banner', '-loglevel', 'error',
-      '-ss', secondsArg(start), '-i', source];
-    if (Number.isFinite(end) && end > start) args.push('-t', secondsArg(end - start));
+      '-ss', win.ss, '-i', source];
+    if (win.t) args.push('-t', win.t);
     if (job.mode === 'audio') {
       args.push('-map', '0:a:0', '-vn', '-c:a', 'libmp3lame', '-q:a', '0');
     } else {
@@ -307,4 +360,4 @@ async function findSubtitleNextTo(videoPath) {
   return hit ? path.join(dir, hit) : null;
 }
 
-module.exports = { retimeSrt, muxSubtitle, verify, findSubtitleNextTo, trimFile, secondsArg };
+module.exports = { retimeSrt, muxSubtitle, verify, findSubtitleNextTo, trimFile, secondsArg, cutWindow };

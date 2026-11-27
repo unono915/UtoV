@@ -86,6 +86,7 @@ const state = {
   player: null,
   playerReady: false,
   previewUntil: null,
+  holdPausedUntil: 0,
   probeAttempt: 0,
   strategies: [{ label: '기본' }],
   jobs: new Map(),
@@ -330,6 +331,14 @@ async function mountPlayer(videoId) {
       events: {
         onReady: () => {
           state.playerReady = true;
+        },
+        // 아직 한 번도 재생하지 않은 영상은 seekTo 가 재생을 시작해 버린다.
+        // 프레임을 맞추려고 찾아간 경우에는 재생이 시작되는 즉시 다시 멈춘다.
+        onStateChange: (e) => {
+          if (e.data === YT.PlayerState.PLAYING && Date.now() < state.holdPausedUntil) {
+            state.holdPausedUntil = 0;
+            try { state.player.pauseVideo(); } catch { /* 무시 */ }
+          }
         },
       },
     });
@@ -578,8 +587,11 @@ function previewAt(which) {
 function seekPreview(which) {
   if (!state.playerReady) return;
   try {
+    // 찾아간 직전 잠깐 동안 재생이 시작되면 다시 멈춘다 (사용자가 나중에 누르는 재생은 건드리지 않는다)
+    state.holdPausedUntil = Date.now() + 1500;
     state.player.pauseVideo();
     state.player.seekTo(previewAt(which), true);
+    state.player.pauseVideo();
     state.previewUntil = null;
   } catch { /* 플레이어 준비 전이면 무시 */ }
 }
@@ -637,6 +649,7 @@ $('playSeg').onclick = () => {
   if (!state.playerReady) return setStatus('미리보기가 준비되면 쓸 수 있습니다');
   try {
     // 저장될 첫 프레임부터 재생한다
+    state.holdPausedUntil = 0;
     state.player.seekTo(previewAt('start'), true);
     state.player.playVideo();
     state.previewUntil = state.end;
